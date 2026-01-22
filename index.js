@@ -14,7 +14,6 @@ app.listen(PORT, () => console.log(`🌐 Keep-alive server running on port ${POR
 // =======================
 const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
-const fetch = require("node-fetch");
 const { addXP, loadLevels, getRankName, setClient, getNextLevelXP } = require("./xp");
 const { 
     XP, MESSAGE_COOLDOWN, LEVEL_CHANNEL_ID, SAFE_CHANNELS, MOD_LOG_CHANNEL, 
@@ -22,10 +21,9 @@ const {
     LIVE_ANNOUNCE_CHANNEL_ID, STREAMERS, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN, YOUTUBE_API_KEY
 } = require("./config");
 
-// =======================
-// USE ENV VARIABLE FOR TOKEN
-// =======================
-const token = process.env.DISCORD_TOKEN || "YOUR_LOCAL_TOKEN_HERE"; // Replace with local token for testing
+// Dynamically import fetch (Option A)
+let fetch;
+(async () => { fetch = (await import("node-fetch")).default; })();
 
 // =======================
 // CLIENT SETUP
@@ -111,7 +109,7 @@ client.on("messageCreate", message => {
         if (!data) return message.reply("🎖️ Rank: **Recruit – Fresh Drop**\n📊 Level: **0**\n⭐ XP: **0**");
         const nextLevelXP = getNextLevelXP(data.level);
         message.reply(
-            `🎖️ Rank: **${getRankName(data.level)}**\n📊 Level: **${data.level}**\n⭐ XP: **${data.xp}/${nextLevelXP}**`
+            `🎖️ Rank: **${getRankName(data.level)}**\n📊 Level: **${data.level}**\n⭐ XP: ${data.xp}/${nextLevelXP}`
         );
     }
 });
@@ -201,6 +199,7 @@ function logAction(message) {
 const liveStatus = {};
 
 async function checkLive() {
+    if (!fetch) fetch = (await import("node-fetch")).default; // ensure fetch is loaded dynamically
     const channel = client.channels.cache.get(LIVE_ANNOUNCE_CHANNEL_ID);
     if (!channel) return;
 
@@ -269,4 +268,5 @@ client.once("ready", () => {
     startLiveChecker();
 });
 
-client.login(token);
+// Use environment variable for production token (Railway secret)
+client.login(process.env.TOKEN || require("./config.json").token);
