@@ -21,7 +21,9 @@ const {
     LIVE_ANNOUNCE_CHANNEL_ID, STREAMERS, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN, YOUTUBE_API_KEY
 } = require("./config");
 
-// Dynamically import fetch (Option A)
+// =======================
+// DYNAMIC FETCH (OPTION A)
+// =======================
 let fetch;
 (async () => { fetch = (await import("node-fetch")).default; })();
 
@@ -263,10 +265,14 @@ function startLiveChecker() {
 // =======================
 // LOGIN
 // =======================
+if (!process.env.TOKEN) {
+    console.error("🚨 No Discord token provided! Set the TOKEN variable in Railway.");
+    process.exit(1);
+}
+
 client.once("ready", () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     startLiveChecker();
 });
 
-// Use environment variable for production token (Railway secret)
-client.login(process.env.TOKEN || require("./config.json").token);
+client.login(process.env.TOKEN);
