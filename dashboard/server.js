@@ -6,12 +6,10 @@ const socketIo = require("socket.io");
 const { loadLevels, getRankName, getNextLevelXP } = require("../xp");
 const { STREAMERS } = require("../config");
 
+// =======================
+// EXPRESS APP SETUP
+// =======================
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
-
-// Use Railway port if available, fallback to 4000 locally
-const PORT = process.env.DASHBOARD_PORT || process.env.PORT || 4000;
 
 // Serve static files
 app.use("/public", express.static(path.join(__dirname, "public")));
@@ -20,26 +18,31 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-// Homepage route
+// =======================
+// DASHBOARD ROUTE
+// =======================
 app.get("/", (req, res) => {
-    const levels = loadLevels(); // Load current XP / levels
+    const levels = loadLevels();
     res.render("index", { levels, STREAMERS, getRankName, getNextLevelXP });
 });
 
-// Socket.IO connection
-io.on("connection", (socket) => {
-    console.log("⚡ Dashboard client connected");
-
-    // Optional: send current levels on connection
-    socket.emit("initLevels", loadLevels());
-
-    socket.on("disconnect", () => {
-        console.log("⚡ Dashboard client disconnected");
-    });
+// =======================
+// HTTP + SOCKET.IO
+// =======================
+const server = http.createServer(app);
+const io = new socketIo.Server(server, {
+    cors: { origin: "*" } // allow cross-origin for dev/testing
 });
 
-// Start server
-server.listen(PORT, () => console.log(`🌐 Dashboard running on port ${PORT}`));
+// Log socket connections
+io.on("connection", (socket) => {
+    console.log("⚡ Dashboard client connected");
+    socket.on("disconnect", () => console.log("⚡ Dashboard client disconnected"));
+});
 
-// Export io to use in your bot
-module.exports = io;
+// =======================
+// EXPORT
+// =======================
+// Export app and io, but do NOT call server.listen()
+// The main bot index.js will attach this to its own Express server
+module.exports = { app, io };

@@ -1,18 +1,21 @@
 // =======================
-// KEEP-ALIVE
+// KEEP-ALIVE + DASHBOARD
 // =======================
 const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Keep-alive routes
 app.get("/", (req, res) => res.status(200).send("BattleFront Madness bot online"));
 app.get("/health", (req, res) =>
   res.status(200).json({ status: "ok", uptime: process.uptime() })
 );
 
-app.listen(PORT, () =>
-  console.log(`🌐 Keep-alive server running on port ${PORT}`)
-);
+// =======================
+// DASHBOARD INTEGRATION
+// =======================
+const { app: dashboardApp, io } = require("./dashboard/server");
+app.use("/dashboard", dashboardApp); // accessible at /dashboard
 
 // =======================
 // DISCORD IMPORTS
@@ -38,17 +41,12 @@ const {
   YOUTUBE_API_KEY
 } = require("./config");
 
-// Dynamically import fetch (ESM)
+// Dynamically import fetch
 let fetch;
 (async () => { fetch = (await import("node-fetch")).default; })();
 
 // =======================
-// DASHBOARD INTEGRATION
-// =======================
-const io = require("./dashboard/server"); // import Socket.IO server
-
-// =======================
-// CLIENT SETUP
+// DISCORD CLIENT SETUP
 // =======================
 const client = new Client({
   intents: [
@@ -76,7 +74,7 @@ for (const file of commandFiles) {
 }
 
 // =======================
-// XP / LEVEL-UP
+// XP / LEVEL-UP FUNCTION
 // =======================
 function giveXP(userId, amount) {
   if (!XP) return;
@@ -85,7 +83,7 @@ function giveXP(userId, amount) {
 
   const nextLevelXP = getNextLevelXP(data.level);
 
-  // Send level-up embed
+  // Level-up message
   if (data.xp >= nextLevelXP) {
     const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
     if (channel) {
@@ -100,7 +98,13 @@ function giveXP(userId, amount) {
   }
 
   // Send XP update to dashboard
-  io.emit("xpUpdate", { userId, level: data.level, xp: data.xp });
+  io.emit("xpUpdate", {
+    userId,
+    level: data.level,
+    xp: data.xp,
+    rank: getRankName(data.level),
+    nextXP
+  });
 }
 
 // =======================
@@ -217,7 +221,7 @@ function logAction(message) {
 const liveStatus = {};
 
 async function checkLive() {
-  if (!fetch) fetch = (await import("node-fetch")).default; // ensure fetch is loaded dynamically
+  if (!fetch) fetch = (await import("node-fetch")).default;
   const channel = client.channels.cache.get(LIVE_ANNOUNCE_CHANNEL_ID);
   if (!channel) return;
 
@@ -271,7 +275,12 @@ async function checkLive() {
 function startLiveChecker() { setInterval(checkLive, 60000); }
 
 // =======================
-// LOGIN
+// SERVER START
+// =======================
+app.listen(PORT, () => console.log(`🌐 Bot + Dashboard server running on port ${PORT}`));
+
+// =======================
+// DISCORD LOGIN
 // =======================
 const BOT_TOKEN = process.env.TOKEN;
 if (!BOT_TOKEN) {
