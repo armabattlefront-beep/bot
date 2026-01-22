@@ -15,7 +15,7 @@ app.get("/health", (req, res) =>
 // DASHBOARD INTEGRATION
 // =======================
 const { app: dashboardApp, io } = require("./dashboard/server");
-app.use("/dashboard", dashboardApp); // accessible at /dashboard
+app.use("/dashboard", dashboardApp);
 
 // =======================
 // DISCORD IMPORTS
@@ -74,17 +74,19 @@ for (const file of commandFiles) {
 }
 
 // =======================
-// XP / LEVEL-UP FUNCTION
+// XP / LEVEL-UP FUNCTION (SAFE nextXP)
 // =======================
 function giveXP(userId, amount) {
   if (!XP) return;
+
   const data = addXP(userId, amount);
   if (!data) return;
 
-  const nextLevelXP = getNextLevelXP(data.level);
+  // SAFE nextXP
+  const nextXP = getNextLevelXP(data.level) || 100 + data.level * 50;
 
   // Level-up message
-  if (data.xp >= nextLevelXP) {
+  if (data.xp >= nextXP) {
     const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
     if (channel) {
       const embed = new EmbedBuilder()
@@ -92,12 +94,12 @@ function giveXP(userId, amount) {
         .setDescription(`✨ **<@${userId}>** has reached **Level ${data.level}**!`)
         .setColor(0x1abc9c)
         .setTimestamp()
-        .setFooter({ text: `XP: ${data.xp}/${nextLevelXP}` });
+        .setFooter({ text: `XP: ${data.xp}/${nextXP}` });
       channel.send({ embeds: [embed] });
     }
   }
 
-  // Send XP update to dashboard
+  // Dashboard update
   io.emit("xpUpdate", {
     userId,
     level: data.level,
@@ -262,8 +264,6 @@ async function checkLive() {
       }
 
       if (!isLive && liveStatus[streamer.name]) liveStatus[streamer.name] = false;
-
-      // Send live status update to dashboard
       io.emit("liveUpdate", { streamer: streamer.name, isLive, url });
 
     } catch (err) {
@@ -288,7 +288,8 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
-client.once("ready", () => {
+// Discord.js v15+ clientReady
+client.on("clientReady", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   startLiveChecker();
 });
