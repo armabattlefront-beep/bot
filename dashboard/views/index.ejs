@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BattleFront Madness Dashboard</title>
+    <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+    <header>
+        <h1>🎖️ BattleFront Madness Dashboard</h1>
+    </header>
+
+    <!-- Live Streamers Section -->
+    <section id="live-section">
+        <h2>🔴 Live Streamers</h2>
+        <ul id="live-list">
+            <% STREAMERS.forEach(streamer => { %>
+                <li id="streamer-<%= streamer.name %>">
+                    <span class="streamer-name"><%= streamer.name %></span>
+                    - <span class="status">Offline</span>
+                </li>
+            <% }) %>
+        </ul>
+    </section>
+
+    <!-- Player XP / Levels Section -->
+    <section id="xp-section">
+        <h2>📊 Player Levels</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Level</th>
+                    <th>XP</th>
+                    <th>Rank</th>
+                    <th>Progress</th>
+                </tr>
+            </thead>
+            <tbody id="xp-table-body">
+                <% Object.keys(levels).forEach(userId => {
+                    const data = levels[userId];
+                    const nextXP = getNextLevelXP(data.level);
+                    let progress = nextXP > 0 ? Math.floor((data.xp / nextXP) * 100) : 0;
+                    progress = Math.min(Math.max(progress, 0), 100); // clamp 0-100
+                %>
+                <tr id="user-<%= userId %>">
+                    <td><%= userId %></td>
+                    <td><%= data.level %></td>
+                    <td><%= data.xp %> / <%= nextXP %></td>
+                    <td><%= getRankName(data.level) %></td>
+                    <td>
+                        <div class="progress-bar">
+                            <div class="progress" style="width:<%= progress %>%"></div>
+                        </div>
+                    </td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        // Update XP in real-time
+        socket.on("xpUpdate", ({ userId, level, xp, rank, nextXP }) => {
+            const tbody = document.getElementById("xp-table-body");
+            let row = document.getElementById(`user-${userId}`);
+            const progress = nextXP > 0 ? Math.floor((xp / nextXP) * 100) : 0;
+            const clampedProgress = Math.min(Math.max(progress, 0), 100);
+
+            if (!row) {
+                // Add new player row
+                row = document.createElement("tr");
+                row.id = `user-${userId}`;
+                row.innerHTML = `
+                    <td>${userId}</td>
+                    <td>${level}</td>
+                    <td>${xp} / ${nextXP}</td>
+                    <td>${rank}</td>
+                    <td>
+                        <div class="progress-bar">
+                            <div class="progress" style="width:${clampedProgress}%"></div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            } else {
+                // Update existing row
+                row.cells[1].innerText = level;
+                row.cells[2].innerText = `${xp} / ${nextXP}`;
+                row.cells[3].innerText = rank;
+                row.cells[4].querySelector(".progress").style.width = clampedProgress + "%";
+            }
+        });
+
+        // Update live streamer status
+        socket.on("liveUpdate", ({ streamer, isLive, url }) => {
+            const li = document.getElementById(`streamer-${streamer}`);
+            if (li) {
+                const statusSpan = li.querySelector(".status");
+                statusSpan.innerHTML = isLive
+                    ? `<a href="${url}" target="_blank">LIVE 🔴</a>`
+                    : "Offline";
+            }
+        });
+    </script>
+</body>
+</html>

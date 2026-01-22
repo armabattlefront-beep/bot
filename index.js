@@ -9,7 +9,10 @@ app.get("/", (req, res) => res.status(200).send("BattleFront Madness bot online"
 app.get("/health", (req, res) =>
   res.status(200).json({ status: "ok", uptime: process.uptime() })
 );
-app.listen(PORT, () => console.log(`🌐 Keep-alive server running on port ${PORT}`));
+
+app.listen(PORT, () =>
+  console.log(`🌐 Keep-alive server running on port ${PORT}`)
+);
 
 // =======================
 // DISCORD IMPORTS
@@ -35,9 +38,14 @@ const {
   YOUTUBE_API_KEY
 } = require("./config");
 
-// Dynamically import fetch (Option A)
+// Dynamically import fetch (ESM)
 let fetch;
 (async () => { fetch = (await import("node-fetch")).default; })();
+
+// =======================
+// DASHBOARD INTEGRATION
+// =======================
+const io = require("./dashboard/server"); // import Socket.IO server
 
 // =======================
 // CLIENT SETUP
@@ -76,6 +84,8 @@ function giveXP(userId, amount) {
   if (!data) return;
 
   const nextLevelXP = getNextLevelXP(data.level);
+
+  // Send level-up embed
   if (data.xp >= nextLevelXP) {
     const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
     if (channel) {
@@ -88,6 +98,9 @@ function giveXP(userId, amount) {
       channel.send({ embeds: [embed] });
     }
   }
+
+  // Send XP update to dashboard
+  io.emit("xpUpdate", { userId, level: data.level, xp: data.xp });
 }
 
 // =======================
@@ -116,15 +129,6 @@ client.on("messageCreate", message => {
     if (XP?.MESSAGE) giveXP(message.author.id, XP.MESSAGE);
     messageCooldown.add(message.author.id);
     setTimeout(() => messageCooldown.delete(message.author.id), MESSAGE_COOLDOWN);
-  }
-
-  if (message.content.toLowerCase() === "!level") {
-    const data = loadLevels()[message.author.id];
-    if (!data) return message.reply("🎖️ Rank: **Recruit – Fresh Drop**\n📊 Level: **0**\n⭐ XP: **0**");
-    const nextLevelXP = getNextLevelXP(data.level);
-    message.reply(
-      `🎖️ Rank: **${getRankName(data.level)}**\n📊 Level: **${data.level}**\n⭐ XP: ${data.xp}/${nextLevelXP}`
-    );
   }
 });
 
@@ -225,25 +229,16 @@ async function checkLive() {
       switch (streamer.platform) {
         case "twitch":
           const twitchRes = await fetch(`https://api.twitch.tv/helix/streams?user_id=${streamer.id}`, {
-            headers: {
-              "Client-ID": TWITCH_CLIENT_ID,
-              "Authorization": `Bearer ${TWITCH_OAUTH_TOKEN}`
-            }
+            headers: { "Client-ID": TWITCH_CLIENT_ID, "Authorization": `Bearer ${TWITCH_OAUTH_TOKEN}` }
           });
           const twitchData = await twitchRes.json();
-          if (twitchData.data && twitchData.data.length > 0) {
-            isLive = true;
-            url = `https://twitch.tv/${streamer.name}`;
-          }
+          if (twitchData.data?.length > 0) { isLive = true; url = `https://twitch.tv/${streamer.name}`; }
           break;
 
         case "youtube":
           const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.id}&eventType=live&type=video&key=${YOUTUBE_API_KEY}`);
           const ytData = await ytRes.json();
-          if (ytData.items && ytData.items.length > 0) {
-            isLive = true;
-            url = `https://youtube.com/watch?v=${ytData.items[0].id.videoId}`;
-          }
+          if (ytData.items?.length > 0) { isLive = true; url = `https://youtube.com/watch?v=${ytData.items[0].id.videoId}`; }
           break;
 
         case "tiktok":
@@ -264,24 +259,23 @@ async function checkLive() {
 
       if (!isLive && liveStatus[streamer.name]) liveStatus[streamer.name] = false;
 
+      // Send live status update to dashboard
+      io.emit("liveUpdate", { streamer: streamer.name, isLive, url });
+
     } catch (err) {
       console.error(`Error checking live status for ${streamer.name}:`, err);
     }
   }
 }
 
-function startLiveChecker() {
-  setInterval(checkLive, 60000);
-}
+function startLiveChecker() { setInterval(checkLive, 60000); }
 
 // =======================
 // LOGIN
 // =======================
-
-// Get bot token from environment variable
 const BOT_TOKEN = process.env.TOKEN;
 if (!BOT_TOKEN) {
-  console.error("⚠️ Bot token not found! Please set the TOKEN environment variable.");
+  console.error("⚠️ Bot token not found! Set TOKEN environment variable.");
   process.exit(1);
 }
 
