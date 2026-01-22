@@ -3,7 +3,6 @@
   "version": "2.0.0",
   "description": "BattleFront Madness Discord bot with XP, level system, and live stream announcements",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
@@ -17,7 +16,7 @@
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.0.2"
   },
   "keywords": [
     "discord",
