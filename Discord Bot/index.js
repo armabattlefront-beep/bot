@@ -21,7 +21,9 @@ const {
     RAID_JOIN_THRESHOLD, RAID_JOIN_INTERVAL, SPAM_LIMIT, SPAM_INTERVAL, STAFF_ROLE_IDS,
     LIVE_ANNOUNCE_CHANNEL_ID, STREAMERS, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN, YOUTUBE_API_KEY
 } = require("./config");
-const { token } = require("./config.json");
+
+// Discord token from env
+const token = process.env.DISCORD_BOT_TOKEN;
 
 // =======================
 // CLIENT SETUP
@@ -62,7 +64,7 @@ let raidMode = false;
 // =======================
 // READY
 // =======================
-client.once("clientReady", () => {
+client.once("ready", () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     startLiveChecker();
 });
@@ -75,16 +77,18 @@ function giveXP(userId, amount) {
     const data = addXP(userId, amount);
     if (!data) return;
 
-    const nextLevelXP = getNextLevelXP(data.level) || 100;
-    const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
-    if (data.xp >= nextLevelXP && channel) {
-        const embed = new EmbedBuilder()
-            .setTitle("🎉 Level Up!")
-            .setDescription(`✨ **<@${userId}>** has reached **Level ${data.level}**!`)
-            .setColor(0x1abc9c)
-            .setTimestamp()
-            .setFooter({ text: `XP: ${data.xp}/${nextLevelXP}` });
-        channel.send({ embeds: [embed] }).catch(console.error);
+    const nextLevelXP = getNextLevelXP(data.level);
+    if (data.xp >= nextLevelXP) {
+        const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
+        if (channel) {
+            const embed = new EmbedBuilder()
+                .setTitle("🎉 Level Up!")
+                .setDescription(`✨ **<@${userId}>** has reached **Level ${data.level}**!`)
+                .setColor(0x1abc9c)
+                .setTimestamp()
+                .setFooter({ text: `XP: ${data.xp}/${nextLevelXP}` });
+            channel.send({ embeds: [embed] });
+        }
     }
 }
 
@@ -100,7 +104,7 @@ client.on("messageCreate", message => {
             timestamps.push(now);
             while (timestamps[0] < now - SPAM_INTERVAL) timestamps.shift();
             if (timestamps.length >= SPAM_LIMIT) {
-                message.guild.members.ban(message.author.id, { reason: "Bot spam detected" }).catch(console.error);
+                message.guild.members.ban(message.author.id, { reason: "Bot spam detected" });
                 logAction(`🚨 Banned bot ${message.author.tag} for spam`);
             }
         }
@@ -110,16 +114,16 @@ client.on("messageCreate", message => {
     if (!messageCooldown.has(message.author.id)) {
         if (XP?.MESSAGE) giveXP(message.author.id, XP.MESSAGE);
         messageCooldown.add(message.author.id);
-        setTimeout(() => messageCooldown.delete(message.author.id), MESSAGE_COOLDOWN || 60000);
+        setTimeout(() => messageCooldown.delete(message.author.id), MESSAGE_COOLDOWN);
     }
 
     if (message.content.toLowerCase() === "!level") {
         const data = loadLevels()[message.author.id];
-        if (!data) return message.reply("🎖️ Rank: **Recruit – Fresh Drop**\n📊 Level: **0**\n⭐ XP: **0**").catch(console.error);
-        const nextLevelXP = getNextLevelXP(data.level) || 100;
+        if (!data) return message.reply("🎖️ Rank: **Recruit – Fresh Drop**\n📊 Level: **0**\n⭐ XP: **0**");
+        const nextLevelXP = getNextLevelXP(data.level);
         message.reply(
             `🎖️ Rank: **${getRankName(data.level)}**\n📊 Level: **${data.level}**\n⭐ XP: **${data.xp}/${nextLevelXP}**`
-        ).catch(console.error);
+        );
     }
 });
 
@@ -176,7 +180,7 @@ function lockDownServer() {
     client.guilds.cache.forEach(guild => {
         guild.channels.cache.forEach(channel => {
             if (!SAFE_CHANNELS.includes(channel.id)) {
-                channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false, Connect: false }).catch(console.error);
+                channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false, Connect: false });
             }
         });
     });
@@ -187,7 +191,7 @@ function unlockServer() {
     client.guilds.cache.forEach(guild => {
         guild.channels.cache.forEach(channel => {
             if (!SAFE_CHANNELS.includes(channel.id)) {
-                channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: true, Connect: true }).catch(console.error);
+                channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: true, Connect: true });
             }
         });
     });
@@ -195,7 +199,7 @@ function unlockServer() {
 
 function logAction(message) {
     const logChannel = client.channels.cache.get(MOD_LOG_CHANNEL);
-    if (logChannel) logChannel.send(message).catch(console.error);
+    if (logChannel) logChannel.send(message);
 }
 
 // =======================
@@ -207,36 +211,32 @@ async function checkLive() {
     const channel = client.channels.cache.get(LIVE_ANNOUNCE_CHANNEL_ID);
     if (!channel) return;
 
-    for (const streamer of STREAMERS || []) {
+    for (const streamer of STREAMERS) {
         try {
             let isLive = false;
             let url = "";
 
             switch (streamer.platform) {
                 case "twitch":
-                    if (TWITCH_CLIENT_ID && TWITCH_OAUTH_TOKEN) {
-                        const twitchRes = await fetch(`https://api.twitch.tv/helix/streams?user_id=${streamer.id}`, {
-                            headers: {
-                                "Client-ID": TWITCH_CLIENT_ID,
-                                "Authorization": `Bearer ${TWITCH_OAUTH_TOKEN}`
-                            }
-                        });
-                        const twitchData = await twitchRes.json();
-                        if (twitchData.data && twitchData.data.length > 0) {
-                            isLive = true;
-                            url = `https://twitch.tv/${streamer.name}`;
+                    const twitchRes = await fetch(`https://api.twitch.tv/helix/streams?user_id=${streamer.id}`, {
+                        headers: {
+                            "Client-ID": TWITCH_CLIENT_ID,
+                            "Authorization": `Bearer ${TWITCH_OAUTH_TOKEN}`
                         }
+                    });
+                    const twitchData = await twitchRes.json();
+                    if (twitchData.data && twitchData.data.length > 0) {
+                        isLive = true;
+                        url = `https://twitch.tv/${streamer.name}`;
                     }
                     break;
 
                 case "youtube":
-                    if (YOUTUBE_API_KEY) {
-                        const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.id}&eventType=live&type=video&key=${YOUTUBE_API_KEY}`);
-                        const ytData = await ytRes.json();
-                        if (ytData.items && ytData.items.length > 0) {
-                            isLive = true;
-                            url = `https://youtube.com/watch?v=${ytData.items[0].id.videoId}`;
-                        }
+                    const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.id}&eventType=live&type=video&key=${YOUTUBE_API_KEY}`);
+                    const ytData = await ytRes.json();
+                    if (ytData.items && ytData.items.length > 0) {
+                        isLive = true;
+                        url = `https://youtube.com/watch?v=${ytData.items[0].id.videoId}`;
                     }
                     break;
 
@@ -249,12 +249,12 @@ async function checkLive() {
                 liveStatus[streamer.name] = true;
                 const embed = new EmbedBuilder()
                     .setTitle(`🔴 ${streamer.name} is LIVE on ${streamer.platform.toUpperCase()}!`)
-                    .setURL(url || "#")
+                    .setURL(url)
                     .setColor(0xff0000)
                     .setThumbnail(streamer.avatar || null)
                     .setDescription(`Click the title to watch now!`)
                     .setTimestamp();
-                channel.send({ embeds: [embed] }).catch(console.error);
+                channel.send({ embeds: [embed] });
             }
 
             if (!isLive && liveStatus[streamer.name]) liveStatus[streamer.name] = false;

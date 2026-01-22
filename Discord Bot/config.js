@@ -3,28 +3,28 @@ module.exports = {
     // XP SETTINGS
     // =======================
     XP: {
-        MESSAGE: 10,           // XP per normal message
-        REACTION: 5,          // XP per reaction
-        VOICE_PER_MINUTE: 2   // XP per minute in voice
+        MESSAGE: parseInt(process.env.XP_MESSAGE || "5", 10),
+        REACTION: parseInt(process.env.XP_REACTION || "3", 10),
+        VOICE_PER_MINUTE: parseInt(process.env.XP_VOICE_PER_MINUTE || "2", 10)
     },
-    LEVEL_XP: 100,            // Base XP per level (can be customized)
-    MESSAGE_COOLDOWN: 60000,  // 1 minute cooldown for message XP
+    LEVEL_XP: parseInt(process.env.LEVEL_XP || "100", 10),
+    MESSAGE_COOLDOWN: parseInt(process.env.MESSAGE_COOLDOWN || "60000", 10),
 
     // =======================
     // CHANNEL IDS
     // =======================
-    LEVEL_CHANNEL_ID: "1373687876268724254",          // Channel where level-up messages appear
-    SAFE_CHANNELS: [                                  // Channels exempt from raid lockdown
+    LEVEL_CHANNEL_ID: process.env.LEVEL_CHANNEL_ID || "1373687876268724254",
+    SAFE_CHANNELS: process.env.SAFE_CHANNELS ? process.env.SAFE_CHANNELS.split(",") : [
         "1332754586179473632",
         "1332753537456803851"
     ],
-    MOD_LOG_CHANNEL: "1463209423907455057",          // Channel for logging moderation/raid actions
-    LIVE_ANNOUNCE_CHANNEL_ID: "123456789012345678",  // Channel for live stream announcements
+    MOD_LOG_CHANNEL: process.env.MOD_LOG_CHANNEL || "1463209423907455057",
+    LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "123456789012345678",
 
     // =======================
-    // STAFF ROLES
+    // ROLES
     // =======================
-    STAFF_ROLE_IDS: [
+    STAFF_ROLE_IDS: process.env.STAFF_ROLE_IDS ? process.env.STAFF_ROLE_IDS.split(",") : [
         "1343247105833046098",
         "1359891673387368559",
         "1332756164366172212",
@@ -35,24 +35,20 @@ module.exports = {
     // =======================
     // RAID / SPAM SETTINGS
     // =======================
-    RAID_JOIN_THRESHOLD: 5,     // Number of joins in interval to trigger raid mode
-    RAID_JOIN_INTERVAL: 10000,  // Interval in ms to count joins for raid detection (10s)
-    SPAM_LIMIT: 5,              // Max messages from a bot in SPAM_INTERVAL before auto-ban
-    SPAM_INTERVAL: 60000,       // Time in ms to track bot message spam (1 min)
+    RAID_JOIN_THRESHOLD: parseInt(process.env.RAID_JOIN_THRESHOLD || "5", 10),
+    RAID_JOIN_INTERVAL: parseInt(process.env.RAID_JOIN_INTERVAL || "10000", 10),
+    SPAM_LIMIT: parseInt(process.env.SPAM_LIMIT || "5", 10),
+    SPAM_INTERVAL: parseInt(process.env.SPAM_INTERVAL || "60000", 10),
 
     // =======================
     // LIVE STREAMERS
     // =======================
-    STREAMERS: [
-        { name: "Streamer1", platform: "twitch", id: "twitch_user_id", avatar: null },
-        { name: "Streamer2", platform: "youtube", id: "youtube_channel_id", avatar: null },
-        { name: "Streamer3", platform: "tiktok", id: "tiktok_username", avatar: null }
+    STREAMERS: process.env.STREAMERS ? JSON.parse(process.env.STREAMERS) : [
+        { name: "Streamer1", platform: "twitch", id: "twitch_user_id" },
+        { name: "Streamer2", platform: "youtube", id: "youtube_channel_id" },
+        { name: "Streamer3", platform: "tiktok", id: "tiktok_username" }
     ],
-
-    // =======================
-    // API KEYS
-    // =======================
-    TWITCH_CLIENT_ID: "your_twitch_client_id",
-    TWITCH_OAUTH_TOKEN: "your_twitch_oauth_token",
-    YOUTUBE_API_KEY: "your_youtube_api_key"
+    TWITCH_CLIENT_ID: process.env.TWITCH_CLIENT_ID || "your_twitch_client_id",
+    TWITCH_OAUTH_TOKEN: process.env.TWITCH_OAUTH_TOKEN || "your_twitch_oauth_token",
+    YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || "your_youtube_api_key"
 };
