@@ -21,7 +21,11 @@ const {
     RAID_JOIN_THRESHOLD, RAID_JOIN_INTERVAL, SPAM_LIMIT, SPAM_INTERVAL, STAFF_ROLE_IDS,
     LIVE_ANNOUNCE_CHANNEL_ID, STREAMERS, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN, YOUTUBE_API_KEY
 } = require("./config");
-const { token } = require("./config.json"); // only for local testing
+
+// =======================
+// USE ENV VARIABLE FOR TOKEN
+// =======================
+const token = process.env.DISCORD_TOKEN || "YOUR_LOCAL_TOKEN_HERE"; // Replace with local token for testing
 
 // =======================
 // CLIENT SETUP
