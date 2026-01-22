@@ -37,11 +37,10 @@
                 </tr>
             </thead>
             <tbody id="xp-table-body">
-                <% Object.keys(levels).forEach(userId => {
-                    const data = levels[userId];
+                <% Object.keys(levels).forEach(userId => { 
+                    const data = levels[userId]; 
                     const nextXP = getNextLevelXP(data.level);
-                    let progress = nextXP > 0 ? Math.floor((data.xp / nextXP) * 100) : 0;
-                    progress = Math.min(Math.max(progress, 0), 100); // clamp 0-100
+                    const progress = nextXP > 0 ? (data.xp / nextXP) * 100 : 0;
                 %>
                 <tr id="user-<%= userId %>">
                     <td><%= userId %></td>
@@ -50,7 +49,7 @@
                     <td><%= getRankName(data.level) %></td>
                     <td>
                         <div class="progress-bar">
-                            <div class="progress" style="width:<%= progress %>%"></div>
+                            <div class="progress" style="width: <%= progress %>%;"></div>
                         </div>
                     </td>
                 </tr>
@@ -64,15 +63,40 @@
     <script>
         const socket = io();
 
+        // Receive initial levels when client connects
+        socket.on("initLevels", (levels) => {
+            const tbody = document.getElementById("xp-table-body");
+            tbody.innerHTML = ""; // Clear existing rows
+
+            Object.keys(levels).forEach(userId => {
+                const data = levels[userId];
+                const nextXP = <%= "0" %>; // fallback, will be updated by bot emits
+                const progress = nextXP > 0 ? (data.xp / nextXP) * 100 : 0;
+
+                const row = document.createElement("tr");
+                row.id = `user-${userId}`;
+                row.innerHTML = `
+                    <td>${userId}</td>
+                    <td>${data.level}</td>
+                    <td>${data.xp} / ${nextXP}</td>
+                    <td>${data.level}</td>
+                    <td>
+                        <div class="progress-bar">
+                            <div class="progress" style="width: ${progress}%;"></div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+
         // Update XP in real-time
         socket.on("xpUpdate", ({ userId, level, xp, rank, nextXP }) => {
-            const tbody = document.getElementById("xp-table-body");
             let row = document.getElementById(`user-${userId}`);
-            const progress = nextXP > 0 ? Math.floor((xp / nextXP) * 100) : 0;
-            const clampedProgress = Math.min(Math.max(progress, 0), 100);
+            const progress = nextXP > 0 ? (xp / nextXP) * 100 : 0;
 
             if (!row) {
-                // Add new player row
+                const tbody = document.getElementById("xp-table-body");
                 row = document.createElement("tr");
                 row.id = `user-${userId}`;
                 row.innerHTML = `
@@ -82,17 +106,16 @@
                     <td>${rank}</td>
                     <td>
                         <div class="progress-bar">
-                            <div class="progress" style="width:${clampedProgress}%"></div>
+                            <div class="progress" style="width:${progress}%"></div>
                         </div>
                     </td>
                 `;
                 tbody.appendChild(row);
             } else {
-                // Update existing row
                 row.cells[1].innerText = level;
                 row.cells[2].innerText = `${xp} / ${nextXP}`;
                 row.cells[3].innerText = rank;
-                row.cells[4].querySelector(".progress").style.width = clampedProgress + "%";
+                row.cells[4].querySelector(".progress").style.width = progress + "%";
             }
         });
 

@@ -1,15 +1,17 @@
+// dashboard/server.js
 const express = require("express");
 const http = require("http");
 const path = require("path");
 const socketIo = require("socket.io");
 const { loadLevels, getRankName, getNextLevelXP } = require("../xp");
-const { LEVEL_CHANNEL_ID } = require("../config");
+const { STREAMERS } = require("../config");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-const PORT = process.env.DASHBOARD_PORT || 4000;
+// Use Railway port if available, fallback to 4000 locally
+const PORT = process.env.DASHBOARD_PORT || process.env.PORT || 4000;
 
 // Serve static files
 app.use("/public", express.static(path.join(__dirname, "public")));
@@ -20,13 +22,17 @@ app.set("views", path.join(__dirname, "views"));
 
 // Homepage route
 app.get("/", (req, res) => {
-    const levels = loadLevels();
-    res.render("index", { levels });
+    const levels = loadLevels(); // Load current XP / levels
+    res.render("index", { levels, STREAMERS, getRankName, getNextLevelXP });
 });
 
-// Socket connection for real-time updates
+// Socket.IO connection
 io.on("connection", (socket) => {
     console.log("⚡ Dashboard client connected");
+
+    // Optional: send current levels on connection
+    socket.emit("initLevels", loadLevels());
+
     socket.on("disconnect", () => {
         console.log("⚡ Dashboard client disconnected");
     });
