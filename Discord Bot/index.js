@@ -1,5 +1,5 @@
 // =======================
-// KEEP-ALIVE (NEVER SLEEP)
+// KEEP-ALIVE
 // =======================
 const express = require("express");
 const app = express();
@@ -21,9 +21,7 @@ const {
     RAID_JOIN_THRESHOLD, RAID_JOIN_INTERVAL, SPAM_LIMIT, SPAM_INTERVAL, STAFF_ROLE_IDS,
     LIVE_ANNOUNCE_CHANNEL_ID, STREAMERS, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN, YOUTUBE_API_KEY
 } = require("./config");
-
-// Discord token from env
-const token = process.env.DISCORD_BOT_TOKEN;
+const { token } = require("./config.json"); // only for local testing
 
 // =======================
 // CLIENT SETUP
@@ -39,6 +37,7 @@ const client = new Client({
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
+
 setClient(client, LEVEL_CHANNEL_ID);
 
 // =======================
@@ -51,23 +50,6 @@ for (const file of commandFiles) {
     if ("data" in command && "execute" in command) client.commands.set(command.data.name, command);
     else console.log(`Command ${file} missing data/execute`);
 }
-
-// =======================
-// TRACKING
-// =======================
-const messageCooldown = new Set();
-const voiceUsers = new Map();
-const recentJoins = [];
-const botMessageTracker = new Map();
-let raidMode = false;
-
-// =======================
-// READY
-// =======================
-client.once("ready", () => {
-    console.log(`🤖 Logged in as ${client.user.tag}`);
-    startLiveChecker();
-});
 
 // =======================
 // XP / LEVEL-UP
@@ -93,8 +75,11 @@ function giveXP(userId, amount) {
 }
 
 // =======================
-// MESSAGE XP + !level
+// MESSAGE XP
 // =======================
+const messageCooldown = new Set();
+const botMessageTracker = new Map();
+
 client.on("messageCreate", message => {
     if (message.author.bot) {
         if (!STAFF_ROLE_IDS.includes(message.author.id)) {
@@ -139,6 +124,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 // =======================
 // VOICE XP
 // =======================
+const voiceUsers = new Map();
 client.on("voiceStateUpdate", (oldState, newState) => {
     const userId = newState.id;
     if (!oldState.channelId && newState.channelId) voiceUsers.set(userId, Date.now());
@@ -152,7 +138,7 @@ client.on("voiceStateUpdate", (oldState, newState) => {
 });
 
 // =======================
-// SLASH COMMAND HANDLER
+// COMMAND INTERACTIONS
 // =======================
 client.on("interactionCreate", async interaction => {
     if (!interaction.isChatInputCommand()) return;
@@ -165,6 +151,9 @@ client.on("interactionCreate", async interaction => {
 // =======================
 // RAID / SECURITY
 // =======================
+let raidMode = false;
+const recentJoins = [];
+
 client.on("guildMemberAdd", member => {
     if (raidMode) member.timeout(60000, "Raid lockdown active");
     recentJoins.push(Date.now());
@@ -251,7 +240,6 @@ async function checkLive() {
                     .setTitle(`🔴 ${streamer.name} is LIVE on ${streamer.platform.toUpperCase()}!`)
                     .setURL(url)
                     .setColor(0xff0000)
-                    .setThumbnail(streamer.avatar || null)
                     .setDescription(`Click the title to watch now!`)
                     .setTimestamp();
                 channel.send({ embeds: [embed] });
@@ -272,4 +260,9 @@ function startLiveChecker() {
 // =======================
 // LOGIN
 // =======================
+client.once("ready", () => {
+    console.log(`🤖 Logged in as ${client.user.tag}`);
+    startLiveChecker();
+});
+
 client.login(token);
