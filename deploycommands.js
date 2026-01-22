@@ -1,11 +1,19 @@
 const fs = require("fs");
 const path = require("path");
 const { REST, Routes } = require("discord.js");
-const { token, clientId, guildId } = require("./config.json"); // Make sure this file exists
+const { clientId, guildId } = require("./config.json");
+
+// Use environment variable first, fallback to config.json (for local testing)
+const token = process.env.TOKEN || require("./config.json").token;
+
+if (!token) {
+    console.error("❌ No Discord token found! Set TOKEN environment variable or add it to config.json");
+    process.exit(1);
+}
 
 const commands = [];
 
-// If your commands are directly inside commands/ folder (no subfolders)
+// Load all command files
 const commandFiles = fs.readdirSync("./commands").filter(file => file.endsWith(".js"));
 
 for (const file of commandFiles) {
@@ -13,7 +21,7 @@ for (const file of commandFiles) {
     if ("data" in command && "execute" in command) {
         commands.push(command.data.toJSON());
     } else {
-        console.log(`The command at ./commands/${file} is missing "data" and/or "execute" property`);
+        console.log(`⚠️ Command at ./commands/${file} is missing "data" or "execute" property`);
     }
 }
 
@@ -22,14 +30,14 @@ const rest = new REST({ version: "10" }).setToken(token);
 
 (async () => {
     try {
-        console.log(`Started refreshing ${commands.length} application (/) commands.`);
+        console.log(`🚀 Started refreshing ${commands.length} application (/) commands.`);
 
-        await rest.put(
+        const data = await rest.put(
             Routes.applicationGuildCommands(clientId, guildId),
             { body: commands }
         );
 
-        console.log(`Successfully reloaded ${commands.length} application (/) commands.`);
+        console.log(`✅ Successfully reloaded ${data.length} commands.`);
     } catch (error) {
         console.error(error);
     }
