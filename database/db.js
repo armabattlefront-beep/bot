@@ -1,7 +1,7 @@
 const Database = require("better-sqlite3");
 
 // If you're on Railway, this path is IMPORTANT
-const db = new Database("/data/database.db\");
+const db = new Database("/data/database.db");
 
 // Create users table if it doesn't exist
 db.prepare(`
