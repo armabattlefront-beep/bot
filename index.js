@@ -1,4 +1,15 @@
 // =======================
+// PROCESS SAFETY (NEVER CRASH)
+// =======================
+process.on("unhandledRejection", reason => {
+  console.error("❌ Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", err => {
+  console.error("❌ Uncaught Exception:", err);
+});
+
+// =======================
 // KEEP-ALIVE + DASHBOARD
 // =======================
 const express = require("express");
@@ -6,12 +17,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => res.status(200).send("BattleFront Madness bot online"));
-app.get("/health", (req, res) =>
-  res.status(200).json({ status: "ok", uptime: process.uptime() })
-);
+app.get("/health", (req, res) => res.status(200).json({ status: "ok", uptime: process.uptime() }));
 
 // =======================
-// DASHBOARD INTEGRATION
+// DASHBOARD
 // =======================
 const { app: dashboardApp, io } = require("./dashboard/server");
 app.use("/dashboard", dashboardApp);
@@ -19,17 +28,11 @@ app.use("/dashboard", dashboardApp);
 // =======================
 // DISCORD IMPORTS
 // =======================
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  Collection,
-  EmbedBuilder
-} = require("discord.js");
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 
 // =======================
-// DATABASE (XP PERSISTENCE)
+// DATABASE XP (PERSISTENT)
 // =======================
 const { getUser, addXP, setLevel } = require("./database/xp");
 
@@ -52,13 +55,13 @@ const {
 } = require("./config");
 
 // =======================
-// FETCH (DYNAMIC IMPORT)
+// FETCH
 // =======================
 let fetch;
 (async () => { fetch = (await import("node-fetch")).default; })();
 
 // =======================
-// DISCORD CLIENT SETUP
+// DISCORD CLIENT
 // =======================
 const client = new Client({
   intents: [
@@ -73,85 +76,59 @@ const client = new Client({
 });
 
 // =======================
-// COMMANDS SETUP
+// COMMANDS
 // =======================
 client.commands = new Collection();
-const commandFiles = fs.readdirSync("./commands").filter(f => f.endsWith(".js"));
-for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  if (command.data && command.execute) {
-    client.commands.set(command.data.name, command);
-  } else {
-    console.log(`⚠️ Command ${file} missing data/execute`);
-  }
+for (const file of fs.readdirSync("./commands").filter(f => f.endsWith(".js"))) {
+  const cmd = require(`./commands/${file}`);
+  if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
 }
 
 // =======================
 // XP HELPERS
 // =======================
-function getNextLevelXP(level) {
-  return 100 + level * 50;
-}
-
-function getRankName(level) {
-  if (level >= 50) return "General";
-  if (level >= 30) return "Colonel";
-  if (level >= 15) return "Sergeant";
-  return "Recruit";
-}
+const nextXP = lvl => 100 + lvl * 50;
+const rankName = lvl => lvl >= 50 ? "General" : lvl >= 30 ? "Colonel" : lvl >= 15 ? "Sergeant" : "Recruit";
 
 function giveXP(userId, amount) {
   if (!XP) return;
-
   const user = getUser(userId);
-  const newXP = addXP(userId, amount);
+  const xp = addXP(userId, amount);
+  if (xp >= nextXP(user.level)) {
+    const lvl = user.level + 1;
+    setLevel(userId, lvl);
 
-  const nextXP = getNextLevelXP(user.level);
+    const ch = client.channels.cache.get(LEVEL_CHANNEL_ID);
+    if (ch) ch.send({ embeds: [new EmbedBuilder().setTitle("🎉 Level Up!").setDescription(`<@${userId}> reached **Level ${lvl}**`).setColor(0x1abc9c)] }).catch(() => {});
 
-  if (newXP >= nextXP) {
-    const newLevel = user.level + 1;
-    setLevel(userId, newLevel);
-
-    const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
-    if (channel) {
-      const embed = new EmbedBuilder()
-        .setTitle("🎉 Level Up!")
-        .setDescription(`✨ **<@${userId}>** reached **Level ${newLevel}**!`)
-        .setColor(0x1abc9c)
-        .setTimestamp();
-
-      channel.send({ embeds: [embed] });
-    }
-
-    io.emit("xpUpdate", {
-      userId,
-      level: newLevel,
-      xp: newXP,
-      rank: getRankName(newLevel),
-      nextXP: getNextLevelXP(newLevel)
-    });
+    io.emit("xpUpdate", { userId, level: lvl, xp, rank: rankName(lvl), nextXP: nextXP(lvl) });
   }
 }
 
 // =======================
-// MESSAGE XP + SPAM PROTECTION
+// MESSAGE HANDLER (CRASH-PROOF)
 // =======================
 const messageCooldown = new Set();
 const botMessageTracker = new Map();
 
-client.on("messageCreate", message => {
+client.on("messageCreate", async message => {
   if (message.author.bot) {
     if (!STAFF_ROLE_IDS.includes(message.author.id)) {
       const now = Date.now();
-      if (!botMessageTracker.has(message.author.id)) {
-        botMessageTracker.set(message.author.id, []);
-      }
-      const timestamps = botMessageTracker.get(message.author.id);
-      timestamps.push(now);
-      while (timestamps[0] < now - SPAM_INTERVAL) timestamps.shift();
-      if (timestamps.length >= SPAM_LIMIT) {
-        message.guild.members.ban(message.author.id, { reason: "Bot spam detected" });
-        logAction(`🚨 Banned bot ${message.author.tag} for spam`);
+      if (!botMessageTracker.has(message.author.id)) botMessageTracker.set(message.author.id, []);
+      const times = botMessageTracker.get(message.author.id);
+      times.push(now);
+      while (times[0] < now - SPAM_INTERVAL) times.shift();
+
+      if (times.length >= SPAM_LIMIT) {
+        try {
+          const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+          if (!member) return;
+          await member.ban({ reason: "Bot spam detected" });
+          logAction(`🚨 Banned bot ${member.user.tag} for spam`);
+        } catch (err) {
+          console.warn("⚠️ Auto-ban failed:", err.code || err.message);
+        }
       }
     }
     return;
@@ -169,9 +146,7 @@ client.on("messageCreate", message => {
 // =======================
 client.on("messageReactionAdd", async (reaction, user) => {
   if (user.bot) return;
-  if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
-  }
+  if (reaction.partial) try { await reaction.fetch(); } catch { return; }
   if (XP?.REACTION) giveXP(user.id, XP.REACTION);
 });
 
@@ -179,152 +154,99 @@ client.on("messageReactionAdd", async (reaction, user) => {
 // VOICE XP
 // =======================
 const voiceUsers = new Map();
-
-client.on("voiceStateUpdate", (oldState, newState) => {
-  const userId = newState.id;
-
-  if (!oldState.channelId && newState.channelId) {
-    voiceUsers.set(userId, Date.now());
-  }
-
-  if (oldState.channelId && !newState.channelId) {
-    const joinedAt = voiceUsers.get(userId);
-    if (!joinedAt) return;
-    const minutes = Math.floor((Date.now() - joinedAt) / 60000);
-    if (minutes > 0 && XP?.VOICE_PER_MINUTE) {
-      giveXP(userId, minutes * XP.VOICE_PER_MINUTE);
-    }
-    voiceUsers.delete(userId);
+client.on("voiceStateUpdate", (o, n) => {
+  const id = n.id;
+  if (!o.channelId && n.channelId) voiceUsers.set(id, Date.now());
+  if (o.channelId && !n.channelId) {
+    const joined = voiceUsers.get(id);
+    if (!joined) return;
+    const mins = Math.floor((Date.now() - joined) / 60000);
+    if (mins > 0 && XP?.VOICE_PER_MINUTE) giveXP(id, mins * XP.VOICE_PER_MINUTE);
+    voiceUsers.delete(id);
   }
 });
 
 // =======================
-// COMMAND HANDLER
+// COMMANDS
 // =======================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(interaction);
-  } catch (err) {
-    console.error(err);
-    if (!interaction.replied) {
-      interaction.reply({ content: "❌ Command error", ephemeral: true });
-    }
-  }
+client.on("interactionCreate", async i => {
+  if (!i.isChatInputCommand()) return;
+  const cmd = client.commands.get(i.commandName);
+  if (!cmd) return;
+  try { await cmd.execute(i); }
+  catch (e) { console.error(e); if (!i.replied) i.reply({ content: "❌ Command error", ephemeral: true }); }
 });
 
 // =======================
-// RAID PROTECTION
+// RAID PROTECTION (SAFE)
 // =======================
 let raidMode = false;
 const recentJoins = [];
 
-client.on("guildMemberAdd", member => {
-  if (raidMode) member.timeout(60000, "Raid lockdown active");
-
+client.on("guildMemberAdd", m => {
+  if (raidMode) m.timeout(60000, "Raid lockdown").catch(() => {});
   recentJoins.push(Date.now());
   while (recentJoins[0] < Date.now() - RAID_JOIN_INTERVAL) recentJoins.shift();
-
   if (recentJoins.length >= RAID_JOIN_THRESHOLD && !raidMode) {
     raidMode = true;
     lockDownServer();
-    logAction("🚨 RAID DETECTED — server locked");
+    logAction("🚨 RAID DETECTED — lockdown enabled");
   }
 });
 
 function lockDownServer() {
-  client.guilds.cache.forEach(guild => {
-    guild.channels.cache.forEach(channel => {
-      if (!SAFE_CHANNELS.includes(channel.id)) {
-        channel.permissionOverwrites.edit(guild.roles.everyone, {
-          SendMessages: false,
-          Connect: false
-        });
-      }
-    });
-  });
+  client.guilds.cache.forEach(g => g.channels.cache.forEach(c => {
+    if (!SAFE_CHANNELS.includes(c.id)) {
+      c.permissionOverwrites.edit(g.roles.everyone, { SendMessages: false, Connect: false }).catch(() => {});
+    }
+  }));
 }
 
-function logAction(message) {
-  const logChannel = client.channels.cache.get(MOD_LOG_CHANNEL);
-  if (logChannel) logChannel.send(message);
+function logAction(msg) {
+  const ch = client.channels.cache.get(MOD_LOG_CHANNEL);
+  if (ch) ch.send(msg).catch(() => {});
 }
 
 // =======================
-// LIVE STATUS CHECKER
+// LIVE CHECKER (HARDENED)
 // =======================
 const liveStatus = {};
-
 async function checkLive() {
   if (!fetch) return;
-  const channel = client.channels.cache.get(LIVE_ANNOUNCE_CHANNEL_ID);
-  if (!channel) return;
+  const ch = client.channels.cache.get(LIVE_ANNOUNCE_CHANNEL_ID);
+  if (!ch) return;
 
-  for (const streamer of STREAMERS) {
+  for (const s of STREAMERS) {
     try {
-      let isLive = false;
-      let url = "";
-
-      if (streamer.platform === "twitch") {
-        const res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${streamer.id}`, {
-          headers: {
-            "Client-ID": TWITCH_CLIENT_ID,
-            "Authorization": `Bearer ${TWITCH_OAUTH_TOKEN}`
-          }
-        });
-        const data = await res.json();
-        if (data.data?.length) {
-          isLive = true;
-          url = `https://twitch.tv/${streamer.name}`;
-        }
+      let isLive = false; let url = "";
+      if (s.platform === "twitch") {
+        const r = await fetch(`https://api.twitch.tv/helix/streams?user_id=${s.id}`, { headers: { "Client-ID": TWITCH_CLIENT_ID, Authorization: `Bearer ${TWITCH_OAUTH_TOKEN}` } });
+        if (!r.ok) continue;
+        const d = await r.json().catch(() => null);
+        if (d?.data?.length) { isLive = true; url = `https://twitch.tv/${s.name}`; }
       }
 
-      if (isLive && !liveStatus[streamer.name]) {
-        liveStatus[streamer.name] = true;
-        channel.send({ embeds: [
-          new EmbedBuilder()
-            .setTitle(`🔴 ${streamer.name} is LIVE!`)
-            .setURL(url)
-            .setColor(0xff0000)
-            .setTimestamp()
-        ]});
+      if (isLive && !liveStatus[s.name]) {
+        liveStatus[s.name] = true;
+        ch.send({ embeds: [new EmbedBuilder().setTitle(`🔴 ${s.name} is LIVE`).setURL(url).setColor(0xff0000)] }).catch(() => {});
       }
 
-      if (!isLive) liveStatus[streamer.name] = false;
-      io.emit("liveUpdate", { streamer: streamer.name, isLive, url });
+      if (!isLive) liveStatus[s.name] = false;
+      io.emit("liveUpdate", { streamer: s.name, isLive, url });
 
-    } catch (err) {
-      console.error(`Live check failed for ${streamer.name}`, err);
-    }
+    } catch (e) { console.warn("Live check failed", e.message); }
   }
 }
 
-function startLiveChecker() {
-  setInterval(checkLive, 60000);
-}
+setInterval(checkLive, 60000);
 
 // =======================
-// SERVER START
+// START
 // =======================
-app.listen(PORT, () => {
-  console.log(`🌐 Web server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🌐 Web server on ${PORT}`));
 
-// =======================
-// DISCORD LOGIN
-// =======================
-const BOT_TOKEN = process.env.TOKEN;
-if (!BOT_TOKEN) {
-  console.error("❌ TOKEN missing");
-  process.exit(1);
-}
+const TOKEN = process.env.TOKEN;
+if (!TOKEN) process.exit(1);
 
-client.once("clientReady", () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
-  startLiveChecker();
-});
-
-client.login(BOT_TOKEN);
+client.once("clientReady", () => console.log(`🤖 Logged in as ${client.user.tag}`));
+client.login(TOKEN);
