@@ -12,11 +12,13 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "-": "^0.0.1",
     "discord.js": "^14.13.0",
     "ejs": "^4.0.1",
     "express": "^4.18.2",
     "node-fetch": "^2.6.7",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
