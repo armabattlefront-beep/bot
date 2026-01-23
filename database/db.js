@@ -2,19 +2,26 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-// Use a data folder relative to the project root
-const dataDir = path.join(__dirname, "../data");
+// =======================
+// DATABASE PATH
+// =======================
+// Use Railway persistent storage or local `data` folder
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "../data");
 
-// Create the folder if it doesn't exist
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+// Ensure the folder exists
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 // Path to the database file
-const dbPath = path.join(dataDir, "database.db");
+const DB_PATH = path.join(DATA_DIR, "database.db");
 
-// Open the database
-const db = new Database(dbPath);
+// =======================
+// OPEN DATABASE
+// =======================
+const db = new Database(DB_PATH);
 
-// Create users table if it doesn't exist
+// =======================
+// CREATE TABLES
+// =======================
 db.prepare(`
   CREATE TABLE IF NOT EXISTS users (
     userId TEXT PRIMARY KEY,
@@ -23,10 +30,13 @@ db.prepare(`
   )
 `).run();
 
-// Index for fast leaderboards
+// Index for fast leaderboard queries
 db.prepare(`
   CREATE INDEX IF NOT EXISTS idx_users_xp
   ON users (xp DESC)
 `).run();
 
+// =======================
+// EXPORT
+// =======================
 module.exports = db;

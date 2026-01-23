@@ -1,13 +1,12 @@
-// rconClient.js
 const { Rcon } = require("rcon-client");
 
 let rcon;
 let isConnected = false;
 
 const RCON_CONFIG = {
-  host: "136.243.133.169",      // <-- fill this
-  port: 5002,                  // <-- your RCON port
-  password: "mbQYk3oQ59kW", // <-- your password
+  host: process.env.RCON_HOST || "136.243.133.169",
+  port: parseInt(process.env.RCON_PORT) || 5002,
+  password: process.env.RCON_PASSWORD
 };
 
 async function connectRcon() {
@@ -32,7 +31,7 @@ async function connectRcon() {
     return rcon;
   } catch (err) {
     console.error("❌ RCON Connection failed:", err.message);
-    setTimeout(connectRcon, 5000); // retry in 5 sec
+    setTimeout(connectRcon, 5000);
   }
 }
 
