@@ -1,8 +1,13 @@
 // =======================
 // PROCESS SAFETY (NEVER CRASH)
 // =======================
-process.on("unhandledRejection", reason => console.error("❌ Unhandled Rejection:", reason));
-process.on("uncaughtException", err => console.error("❌ Uncaught Exception:", err));
+process.on("unhandledRejection", reason => {
+  console.error("❌ Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", err => {
+  console.error("❌ Uncaught Exception:", err);
+});
 
 // =======================
 // KEEP-ALIVE + DASHBOARD
@@ -14,6 +19,7 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.status(200).send("BattleFront Madness bot online"));
 app.get("/health", (req, res) => res.status(200).json({ status: "ok", uptime: process.uptime() }));
 
+// Dashboard
 const { app: dashboardApp, io } = require("./dashboard/server");
 app.use("/dashboard", dashboardApp);
 
@@ -24,11 +30,11 @@ const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = requir
 const fs = require("fs");
 
 // =======================
-// DATABASE & GAMERTAGS
+// DATABASE
 // =======================
 const { getUser, addXP, setLevel } = require("./database/xp");
 const { getDiscordByGamertag } = require("./database/gamertags");
-const { sendRconCommand, connectRcon } = require("./rconClient");
+const polls = require("./database/polls");
 
 // =======================
 // CONFIG
@@ -58,7 +64,7 @@ let fetch;
 (async () => { fetch = (await import("node-fetch")).default; })();
 
 // =======================
-// DISCORD CLIENT
+// CLIENT
 // =======================
 const client = new Client({
   intents: [
@@ -111,7 +117,7 @@ function giveXP(userId, amount) {
 }
 
 // =======================
-// MESSAGE XP & KILLFEED
+// MESSAGE XP HANDLER
 // =======================
 const messageCooldown = new Set();
 const botMessageTracker = new Map();
@@ -120,19 +126,21 @@ client.on("messageCreate", async message => {
   if (!message.guild) return;
 
   // Bot spam auto-ban
-  if (message.author.bot && !STAFF_ROLE_IDS.includes(message.author.id)) {
-    const now = Date.now();
-    if (!botMessageTracker.has(message.author.id)) botMessageTracker.set(message.author.id, []);
-    const times = botMessageTracker.get(message.author.id);
-    times.push(now);
-    while (times[0] < now - SPAM_INTERVAL) times.shift();
-    if (times.length >= SPAM_LIMIT) {
-      try {
-        const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-        if (!member) return;
-        await member.ban({ reason: "Bot spam detected" });
-        logAction(`🚨 Banned bot ${member.user.tag} for spam`);
-      } catch { }
+  if (message.author.bot) {
+    if (!STAFF_ROLE_IDS.includes(message.author.id)) {
+      const now = Date.now();
+      if (!botMessageTracker.has(message.author.id)) botMessageTracker.set(message.author.id, []);
+      const times = botMessageTracker.get(message.author.id);
+      times.push(now);
+      while (times[0] < now - SPAM_INTERVAL) times.shift();
+      if (times.length >= SPAM_LIMIT) {
+        try {
+          const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+          if (!member) return;
+          await member.ban({ reason: "Bot spam detected" });
+          logAction(`🚨 Banned bot ${member.user.tag} for spam`);
+        } catch (err) { console.warn("⚠️ Auto-ban failed:", err.message); }
+      }
     }
     return;
   }
@@ -168,7 +176,7 @@ client.on("messageCreate", async message => {
 });
 
 // =======================
-// REACTION & VOICE XP
+// REACTIONS
 // =======================
 client.on("messageReactionAdd", async (reaction, user) => {
   if (user.bot) return;
@@ -176,6 +184,9 @@ client.on("messageReactionAdd", async (reaction, user) => {
   if (XP?.REACTION) giveXP(user.id, XP.REACTION);
 });
 
+// =======================
+// VOICE
+// =======================
 const voiceUsers = new Map();
 client.on("voiceStateUpdate", (oldState, newState) => {
   const id = newState.id;
@@ -190,14 +201,14 @@ client.on("voiceStateUpdate", (oldState, newState) => {
 });
 
 // =======================
-// COMMAND HANDLER
+// COMMAND INTERACTIONS
 // =======================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const cmd = client.commands.get(interaction.commandName);
+client.on("interactionCreate", async i => {
+  if (!i.isChatInputCommand()) return;
+  const cmd = client.commands.get(i.commandName);
   if (!cmd) return;
-  try { await cmd.execute(interaction); }
-  catch (e) { console.error(e); if (!interaction.replied) interaction.reply({ content: "❌ Command error", ephemeral: true }); }
+  try { await cmd.execute(i); }
+  catch (e) { console.error(e); if (!i.replied) i.reply({ content: "❌ Command error", ephemeral: true }); }
 });
 
 // =======================
@@ -231,7 +242,12 @@ function logAction(msg) {
 }
 
 // =======================
-// LIVE STREAM CHECKER
+// POLLS INIT
+// =======================
+polls.init(client);
+
+// =======================
+// LIVE CHECKER
 // =======================
 const liveStatus = {};
 async function checkLive() {
@@ -260,7 +276,7 @@ async function checkLive() {
 setInterval(checkLive, 60000);
 
 // =======================
-// START BOT + SERVER
+// SERVER START
 // =======================
 app.listen(PORT, () => console.log(`🌐 Web server on port ${PORT}`));
 
