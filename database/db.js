@@ -1,7 +1,18 @@
+const fs = require("fs");
+const path = require("path");
 const Database = require("better-sqlite3");
 
-// If you're on Railway, this path is IMPORTANT
-const db = new Database("/data/database.db");
+// Use a data folder relative to the project root
+const dataDir = path.join(__dirname, "../data");
+
+// Create the folder if it doesn't exist
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+// Path to the database file
+const dbPath = path.join(dataDir, "database.db");
+
+// Open the database
+const db = new Database(dbPath);
 
 // Create users table if it doesn't exist
 db.prepare(`
