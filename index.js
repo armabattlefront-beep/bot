@@ -1,9 +1,14 @@
 // =======================
 // ENV + PROCESS SAFETY
 // =======================
-require('dotenv').config();
-process.on("unhandledRejection", reason => console.error("❌ Unhandled Rejection:", reason));
-process.on("uncaughtException", err => console.error("❌ Uncaught Exception:", err));
+require("dotenv").config();
+
+process.on("unhandledRejection", reason =>
+  console.error("❌ Unhandled Rejection:", reason)
+);
+process.on("uncaughtException", err =>
+  console.error("❌ Uncaught Exception:", err)
+);
 
 // =======================
 // EXPRESS KEEP-ALIVE + DASHBOARD
@@ -12,17 +17,31 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get("/", (req, res) => res.status(200).send("BattleFront Madness bot online"));
-app.get("/health", (req, res) => res.status(200).json({ status: "ok", uptime: process.uptime() }));
+app.get("/", (req, res) =>
+  res.status(200).send("BattleFront Madness bot online")
+);
+app.get("/health", (req, res) =>
+  res.status(200).json({ status: "ok", uptime: process.uptime() })
+);
 
-const { app: dashboardApp, io } = require("./dashboard/server");
+const { app: dashboardApp } = require("./dashboard/server");
 app.use("/dashboard", dashboardApp);
 
 // =======================
 // DISCORD CLIENT
 // =======================
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, REST, Routes } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  Collection,
+  EmbedBuilder,
+  REST,
+  Routes
+} = require("discord.js");
+
 const fs = require("fs");
+const path = require("path");
 
 const client = new Client({
   intents: [
@@ -37,32 +56,57 @@ const client = new Client({
 });
 
 // =======================
-// LOAD COMMANDS
+// LOAD SLASH COMMANDS
 // =======================
 client.commands = new Collection();
-const commandFiles = fs.readdirSync("./commands").filter(f => f.endsWith(".js"));
+const commandsPath = path.join(__dirname, "commands");
+const commandFiles = fs
+  .readdirSync(commandsPath)
+  .filter(file => file.endsWith(".js"));
+
 for (const file of commandFiles) {
-  const cmd = require(`./commands/${file}`);
-  if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
+  const command = require(path.join(commandsPath, file));
+  if (command.data && command.execute) {
+    client.commands.set(command.data.name, command);
+  } else {
+    console.warn(`⚠️ ${file} missing data or execute`);
+  }
 }
 
 // =======================
-// REGISTER SLASH COMMANDS
+// REGISTER SLASH COMMANDS (AUTO)
 // =======================
 async function registerCommands() {
-  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-  const commands = client.commands.map(c => c.data.toJSON());
+  const token = process.env.TOKEN;
+  const clientId = process.env.CLIENT_ID;
+  const guildId = process.env.GUILD_ID;
+
+  if (!token || !clientId || !guildId) {
+    console.error("❌ Missing TOKEN, CLIENT_ID, or GUILD_ID");
+    return;
+  }
+
+  const rest = new REST({ version: "10" }).setToken(token);
+  const commands = client.commands.map(cmd => cmd.data.toJSON());
+
   try {
-    console.log(`⚡ Deploying ${commands.length} commands...`);
-    await rest.put(Routes.applicationCommands(process.env.BOT_CLIENT_ID), { body: commands });
-    console.log("✅ Commands deployed successfully.");
-  } catch (err) { console.error("❌ Failed to deploy commands:", err); }
+    console.log(`⚡ Deploying ${commands.length} guild commands...`);
+
+    await rest.put(
+      Routes.applicationGuildCommands(clientId, guildId),
+      { body: commands }
+    );
+
+    console.log("✅ Slash commands deployed instantly.");
+  } catch (err) {
+    console.error("❌ Command deployment failed:", err);
+  }
 }
 
 // =======================
 // BOT READY
 // =======================
-client.once("clientReady", async () => {
+client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   await registerCommands();
 });
@@ -70,20 +114,25 @@ client.once("clientReady", async () => {
 // =======================
 // DATABASE
 // =======================
-const db = require("./database/db"); // handles creating ./data/database.db safely
+require("./database/db");
 
 // =======================
 // XP HANDLING
 // =======================
 const { getUser, addXP, setLevel } = require("./database/xp");
 const { getDiscordByGamertag } = require("./database/gamertags");
-const { XP, MESSAGE_COOLDOWN, LEVEL_CHANNEL_ID, STAFF_ROLE_IDS, KILLFEED_CHANNEL_ID } = require("./config");
+const {
+  XP,
+  MESSAGE_COOLDOWN,
+  LEVEL_CHANNEL_ID,
+  KILLFEED_CHANNEL_ID
+} = require("./config");
 
 const nextXP = lvl => 100 + lvl * 50;
-const rankName = lvl => lvl >= 50 ? "General" : lvl >= 30 ? "Colonel" : lvl >= 15 ? "Sergeant" : "Recruit";
 
 function giveXP(userId, amount) {
   if (!XP) return;
+
   const user = getUser(userId);
   const newXP = addXP(userId, amount);
 
@@ -91,15 +140,18 @@ function giveXP(userId, amount) {
     const lvl = user.level + 1;
     setLevel(userId, lvl);
 
-    const ch = client.channels.cache.get(LEVEL_CHANNEL_ID);
-    if (ch) ch.send({
-      embeds: [new EmbedBuilder()
-        .setTitle("🎉 Level Up!")
-        .setDescription(`<@${userId}> reached **Level ${lvl}**`)
-        .setColor(0x1abc9c)
-        .setTimestamp()
-      ]
-    }).catch(() => {});
+    const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
+    if (channel) {
+      channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🎉 Level Up!")
+            .setDescription(`<@${userId}> reached **Level ${lvl}**`)
+            .setColor(0x1abc9c)
+            .setTimestamp()
+        ]
+      }).catch(() => {});
+    }
   }
 }
 
@@ -107,16 +159,19 @@ function giveXP(userId, amount) {
 // MESSAGE XP
 // =======================
 const messageCooldown = new Set();
-client.on("messageCreate", async message => {
+
+client.on("messageCreate", message => {
   if (!message.guild || message.author.bot) return;
 
   if (!messageCooldown.has(message.author.id)) {
     if (XP?.MESSAGE) giveXP(message.author.id, XP.MESSAGE);
     messageCooldown.add(message.author.id);
-    setTimeout(() => messageCooldown.delete(message.author.id), MESSAGE_COOLDOWN);
+    setTimeout(
+      () => messageCooldown.delete(message.author.id),
+      MESSAGE_COOLDOWN
+    );
   }
 
-  // KILLFEED XP
   if (message.channel.id === KILLFEED_CHANNEL_ID) {
     const match = message.content.match(/^(.+?) killed .+$/i);
     if (match) {
@@ -127,21 +182,38 @@ client.on("messageCreate", async message => {
 });
 
 // =======================
-// COMMAND HANDLER
+// SLASH COMMAND HANDLER
 // =======================
-client.on("interactionCreate", async i => {
-  if (!i.isChatInputCommand()) return;
-  const cmd = client.commands.get(i.commandName);
-  if (!cmd) return;
-  try { await cmd.execute(i); }
-  catch (e) { console.error(e); if (!i.replied) i.reply({ content: "❌ Command error", ephemeral: true }); }
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
+  try {
+    await command.execute(interaction);
+  } catch (err) {
+    console.error(err);
+    if (!interaction.replied) {
+      interaction.reply({
+        content: "❌ Command execution failed",
+        ephemeral: true
+      });
+    }
+  }
 });
 
 // =======================
-// SERVER START
+// START WEB SERVER
 // =======================
-app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`🌐 Web server running on port ${PORT}`)
+);
 
+// =======================
+// LOGIN
+// =======================
 const TOKEN = process.env.TOKEN;
-if (!TOKEN) throw new Error("No TOKEN in .env found");
+if (!TOKEN) throw new Error("❌ TOKEN not set in Railway");
+
 client.login(TOKEN);
