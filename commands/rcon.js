@@ -1,59 +1,108 @@
+const { SlashCommandBuilder } = require("discord.js");
+const { RCON_ROLE_ID, MOD_LOG_CHANNEL } = require("../config");
+const { sendRconCommand } = require("../rconClient");
+
 module.exports = {
-  // =========================
-  // XP SETTINGS
-  // =========================
-  XP: {
-    MESSAGE: parseInt(process.env.XP_MESSAGE || "5", 10),
-    REACTION: parseInt(process.env.XP_REACTION || "3", 10),
-    VOICE_PER_MINUTE: parseInt(process.env.XP_VOICE_PER_MINUTE || "2", 10)
-  },
-  LEVEL_XP: parseInt(process.env.LEVEL_XP || "100", 10),
-  MESSAGE_COOLDOWN: parseInt(process.env.MESSAGE_COOLDOWN || "60000", 10),
+  data: new SlashCommandBuilder()
+    .setName("rcon")
+    .setDescription("Staff-only Arma Reforger server commands")
+    .addSubcommand(sub =>
+      sub.setName("say")
+        .setDescription("Broadcast a message in-game")
+        .addStringOption(opt => opt.setName("message").setDescription("Message to broadcast").setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName("kick")
+        .setDescription("Kick a player")
+        .addStringOption(opt => opt.setName("player").setDescription("Player name").setRequired(true))
+        .addStringOption(opt => opt.setName("reason").setDescription("Reason").setRequired(false))
+    )
+    .addSubcommand(sub =>
+      sub.setName("ban")
+        .setDescription("Ban a player")
+        .addStringOption(opt => opt.setName("player").setDescription("Player name").setRequired(true))
+        .addStringOption(opt => opt.setName("reason").setDescription("Reason").setRequired(false))
+    )
+    .addSubcommand(sub => sub.setName("restart").setDescription("Restart the mission"))
+    .addSubcommand(sub => sub.setName("reassign").setDescription("Reassign roles"))
+    .addSubcommand(sub => sub.setName("lock").setDescription("Lock server"))
+    .addSubcommand(sub => sub.setName("unlock").setDescription("Unlock server"))
+    .addSubcommand(sub => sub.setName("shutdown").setDescription("Shutdown server"))
+    .addSubcommand(sub => sub.setName("restartserver").setDescription("Shutdown & restart server"))
+    .addSubcommand(sub =>
+      sub.setName("mission")
+        .setDescription("Change mission")
+        .addStringOption(opt => opt.setName("filename").setDescription("Mission filename").setRequired(true))
+        .addStringOption(opt => opt.setName("difficulty").setDescription("Difficulty (optional)").setRequired(false))
+    )
+    .addSubcommand(sub => sub.setName("userlist").setDescription("List all players online"))
+    .addSubcommand(sub => sub.setName("serverstatus").setDescription("Check server status"))
+    .addSubcommand(sub => sub.setName("playerlist").setDescription("List all players currently online")),
 
-  // =========================
-  // CHANNEL IDS
-  // =========================
-  LEVEL_CHANNEL_ID: process.env.LEVEL_CHANNEL_ID || "1373687876268724254",
-  SAFE_CHANNELS: process.env.SAFE_CHANNELS ? process.env.SAFE_CHANNELS.split(",") : [
-    "1332754586179473632",
-    "1332753537456803851"
-  ],
-  MOD_LOG_CHANNEL: process.env.MOD_LOG_CHANNEL || "1463209423907455057",
-  LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "123456789012345678",
+  execute: async function(interaction) {
+    // ===== PERMISSION CHECK =====
+    if (!interaction.member.roles.cache.has(RCON_ROLE_ID)) {
+      return interaction.reply({ content: "🚫 You do not have permission to use RCON commands", ephemeral: true });
+    }
 
-  // =========================
-  // ROLES
-  // =========================
-  STAFF_ROLE_IDS: process.env.STAFF_ROLE_IDS ? process.env.STAFF_ROLE_IDS.split(",") : [
-    "1343247105833046098",
-    "1359891673387368559",
-    "1332756164366172212",
-    "1332756114386849843",
-    "1332756065430929408"
-  ],
-  RCON_ROLE_ID: process.env.RCON_ROLE_ID || "123456789012345678", // <--- Your RCON role
+    // ===== DEFER REPLY =====
+    await interaction.deferReply({ ephemeral: true });
 
-  // =========================
-  // RAID / SPAM SETTINGS
-  // =========================
-  RAID_JOIN_THRESHOLD: parseInt(process.env.RAID_JOIN_THRESHOLD || "5", 10),
-  RAID_JOIN_INTERVAL: parseInt(process.env.RAID_JOIN_INTERVAL || "10000", 10),
-  SPAM_LIMIT: parseInt(process.env.SPAM_LIMIT || "5", 10),
-  SPAM_INTERVAL: parseInt(process.env.SPAM_INTERVAL || "60000", 10),
+    // ===== BUILD RCON COMMAND =====
+    const sub = interaction.options.getSubcommand();
+    let cmd = "";
 
-  // =========================
-  // STREAMERS
-  // =========================
-  STREAMERS: process.env.STREAMERS ? JSON.parse(process.env.STREAMERS) : [
-    { name: "Streamer1", platform: "twitch", id: "twitch_user_id" },
-    { name: "Streamer2", platform: "youtube", id: "youtube_channel_id" },
-    { name: "Streamer3", platform: "tiktok", id: "tiktok_username" }
-  ],
+    switch (sub) {
+      case "say":
+        const message = interaction.options.getString("message");
+        cmd = `#say "${message}"`;
+        break;
 
-  // =========================
-  // API KEYS
-  // =========================
-  TWITCH_CLIENT_ID: process.env.TWITCH_CLIENT_ID || "your_twitch_client_id",
-  TWITCH_OAUTH_TOKEN: process.env.TWITCH_OAUTH_TOKEN || "your_twitch_oauth_token",
-  YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || "your_youtube_api_key"
+      case "kick":
+        const kickPlayer = interaction.options.getString("player");
+        const kickReason = interaction.options.getString("reason") || "";
+        cmd = `#kick "${kickPlayer}" "${kickReason}"`;
+        break;
+
+      case "ban":
+        const banPlayer = interaction.options.getString("player");
+        const banReason = interaction.options.getString("reason") || "";
+        cmd = `#exec ban "${banPlayer}" "${banReason}"`;
+        break;
+
+      case "restart": cmd = "#restart"; break;
+      case "reassign": cmd = "#reassign"; break;
+      case "lock": cmd = "#lock"; break;
+      case "unlock": cmd = "#unlock"; break;
+      case "shutdown": cmd = "#shutdown"; break;
+      case "restartserver": cmd = "#restartserver"; break;
+
+      case "mission":
+        const file = interaction.options.getString("filename");
+        const diff = interaction.options.getString("difficulty") || "";
+        cmd = `#mission ${file} ${diff}`.trim();
+        break;
+
+      case "userlist": cmd = "#userlist"; break;
+      case "serverstatus": cmd = "#serverstatus"; break;
+      case "playerlist": cmd = "#playerlist"; break;
+
+      default:
+        return interaction.editReply({ content: "❌ Unknown RCON command" });
+    }
+
+    // ===== SEND TO RCON =====
+    try {
+      const res = await sendRconCommand(cmd);
+      await interaction.editReply({ content: `✅ Command executed: \`${cmd}\`\n\`\`\`${res || "No response"}\`\`\`` });
+
+      // ===== LOG TO MOD CHANNEL =====
+      const logCh = interaction.client.channels.cache.get(MOD_LOG_CHANNEL);
+      if (logCh) logCh.send(`🖥 RCON: ${interaction.user.tag} ran \`${cmd}\``).catch(() => {});
+
+    } catch (err) {
+      console.error("❌ RCON execution error:", err);
+      await interaction.editReply({ content: `❌ Failed to execute RCON command: \`${cmd}\`` });
+    }
+  }
 };
