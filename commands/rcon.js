@@ -1,86 +1,59 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { isStaff } = require("../utils/permissions");
-const { MOD_LOG_CHANNEL } = require("../config");
-const { sendRconCommand } = require("../rconClient");
-
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("rcon")
-    .setDescription("Staff-only Arma Reforger server commands")
-    .addSubcommand(sub =>
-      sub.setName("say")
-        .setDescription("Broadcast a message in-game")
-        .addStringOption(opt => opt.setName("message").setDescription("Message to broadcast").setRequired(true))
-    )
-    .addSubcommand(sub =>
-      sub.setName("kick")
-        .setDescription("Kick a player")
-        .addStringOption(opt => opt.setName("player").setDescription("Player name").setRequired(true))
-        .addStringOption(opt => opt.setName("reason").setDescription("Reason").setRequired(false))
-    )
-    .addSubcommand(sub =>
-      sub.setName("ban")
-        .setDescription("Ban a player")
-        .addStringOption(opt => opt.setName("player").setDescription("Player name").setRequired(true))
-        .addStringOption(opt => opt.setName("reason").setDescription("Reason").setRequired(false))
-    )
-    .addSubcommand(sub => sub.setName("restart").setDescription("Restart the mission"))
-    .addSubcommand(sub => sub.setName("reassign").setDescription("Reassign roles"))
-    .addSubcommand(sub => sub.setName("lock").setDescription("Lock server"))
-    .addSubcommand(sub => sub.setName("unlock").setDescription("Unlock server"))
-    .addSubcommand(sub => sub.setName("shutdown").setDescription("Shutdown server"))
-    .addSubcommand(sub => sub.setName("restartserver").setDescription("Shutdown & restart server"))
-    .addSubcommand(sub =>
-      sub.setName("mission")
-        .setDescription("Change mission")
-        .addStringOption(opt => opt.setName("filename").setDescription("Mission filename").setRequired(true))
-        .addStringOption(opt => opt.setName("difficulty").setDescription("Difficulty (optional)").setRequired(false))
-    )
-    .addSubcommand(sub => sub.setName("userlist").setDescription("List all players online")),
-
-  async execute(interaction) {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: "🚫 Staff only", ephemeral: true });
-    }
-
-    const sub = interaction.options.getSubcommand();
-    let cmd = "";
-
-    switch (sub) {
-      case "say":
-        const message = interaction.options.getString("message");
-        cmd = `#say "${message}"`;
-        break;
-      case "kick":
-        const kickPlayer = interaction.options.getString("player");
-        const kickReason = interaction.options.getString("reason") || "";
-        cmd = `#kick "${kickPlayer}" "${kickReason}"`;
-        break;
-      case "ban":
-        const banPlayer = interaction.options.getString("player");
-        const banReason = interaction.options.getString("reason") || "";
-        cmd = `#exec ban "${banPlayer}" "${banReason}"`;
-        break;
-      case "restart": cmd = "#restart"; break;
-      case "reassign": cmd = "#reassign"; break;
-      case "lock": cmd = "#lock"; break;
-      case "unlock": cmd = "#unlock"; break;
-      case "shutdown": cmd = "#shutdown"; break;
-      case "restartserver": cmd = "#restartserver"; break;
-      case "mission":
-        const file = interaction.options.getString("filename");
-        const diff = interaction.options.getString("difficulty") || "";
-        cmd = `#mission ${file} ${diff}`.trim();
-        break;
-      case "userlist": cmd = "#userlist"; break;
-      default:
-        return interaction.reply({ content: "❌ Unknown RCON command", ephemeral: true });
-    }
-
-    const res = await sendRconCommand(cmd);
-    await interaction.reply({ content: `✅ Command executed: \`${cmd}\`\n\`\`\`${res || "No response"}\`\`\``, ephemeral: true });
-
-    const logCh = interaction.client.channels.cache.get(MOD_LOG_CHANNEL);
-    if (logCh) logCh.send(`🖥 RCON: ${interaction.user.tag} ran \`${cmd}\``).catch(() => {});
+  // =========================
+  // XP SETTINGS
+  // =========================
+  XP: {
+    MESSAGE: parseInt(process.env.XP_MESSAGE || "5", 10),
+    REACTION: parseInt(process.env.XP_REACTION || "3", 10),
+    VOICE_PER_MINUTE: parseInt(process.env.XP_VOICE_PER_MINUTE || "2", 10)
   },
+  LEVEL_XP: parseInt(process.env.LEVEL_XP || "100", 10),
+  MESSAGE_COOLDOWN: parseInt(process.env.MESSAGE_COOLDOWN || "60000", 10),
+
+  // =========================
+  // CHANNEL IDS
+  // =========================
+  LEVEL_CHANNEL_ID: process.env.LEVEL_CHANNEL_ID || "1373687876268724254",
+  SAFE_CHANNELS: process.env.SAFE_CHANNELS ? process.env.SAFE_CHANNELS.split(",") : [
+    "1332754586179473632",
+    "1332753537456803851"
+  ],
+  MOD_LOG_CHANNEL: process.env.MOD_LOG_CHANNEL || "1463209423907455057",
+  LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "123456789012345678",
+
+  // =========================
+  // ROLES
+  // =========================
+  STAFF_ROLE_IDS: process.env.STAFF_ROLE_IDS ? process.env.STAFF_ROLE_IDS.split(",") : [
+    "1343247105833046098",
+    "1359891673387368559",
+    "1332756164366172212",
+    "1332756114386849843",
+    "1332756065430929408"
+  ],
+  RCON_ROLE_ID: process.env.RCON_ROLE_ID || "123456789012345678", // <--- Your RCON role
+
+  // =========================
+  // RAID / SPAM SETTINGS
+  // =========================
+  RAID_JOIN_THRESHOLD: parseInt(process.env.RAID_JOIN_THRESHOLD || "5", 10),
+  RAID_JOIN_INTERVAL: parseInt(process.env.RAID_JOIN_INTERVAL || "10000", 10),
+  SPAM_LIMIT: parseInt(process.env.SPAM_LIMIT || "5", 10),
+  SPAM_INTERVAL: parseInt(process.env.SPAM_INTERVAL || "60000", 10),
+
+  // =========================
+  // STREAMERS
+  // =========================
+  STREAMERS: process.env.STREAMERS ? JSON.parse(process.env.STREAMERS) : [
+    { name: "Streamer1", platform: "twitch", id: "twitch_user_id" },
+    { name: "Streamer2", platform: "youtube", id: "youtube_channel_id" },
+    { name: "Streamer3", platform: "tiktok", id: "tiktok_username" }
+  ],
+
+  // =========================
+  // API KEYS
+  // =========================
+  TWITCH_CLIENT_ID: process.env.TWITCH_CLIENT_ID || "your_twitch_client_id",
+  TWITCH_OAUTH_TOKEN: process.env.TWITCH_OAUTH_TOKEN || "your_twitch_oauth_token",
+  YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || "your_youtube_api_key"
 };
