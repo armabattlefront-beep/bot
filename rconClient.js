@@ -6,7 +6,7 @@ let isConnecting = false;
 let commandQueue = [];
 
 // =========================
-// RCON CONFIG (SINGLE SOURCE)
+// RCON CONFIG (UDP)
 // =========================
 const RCON_PORT = 5002;
 
@@ -14,7 +14,7 @@ const RCON_CONFIG = {
   host: process.env.RCON_HOST || "136.243.133.169",
   port: RCON_PORT,
   password: process.env.RCON_PASSWORD,
-  tcp: false,
+  tcp: false,      // 🔹 UDP
   challenge: false
 };
 
@@ -32,15 +32,12 @@ async function connectRcon() {
   if (isConnecting) return;
 
   isConnecting = true;
-  console.log(`🔄 Connecting to RCON (${RCON_CONFIG.host}:${RCON_PORT})...`);
+  console.log(`🔄 Connecting to RCON (UDP) ${RCON_CONFIG.host}:${RCON_PORT}...`);
 
   try {
     rcon = new Rcon(RCON_CONFIG);
 
-    rcon.on("connect", () => {
-      console.log("🔌 RCON socket connected");
-    });
-
+    rcon.on("connect", () => console.log("🔌 RCON socket connected (UDP)"));
     rcon.on("ready", () => {
       isConnected = true;
       isConnecting = false;
@@ -62,15 +59,17 @@ async function connectRcon() {
 
     // Flush queued commands
     if (commandQueue.length > 0) {
-      console.log(`📦 Flushing ${commandQueue.length} queued RCON command(s)`);
+      console.log(`📦 Sending ${commandQueue.length} queued RCON command(s)`);
       const queue = [...commandQueue];
       commandQueue = [];
 
       for (const { cmd, resolve, reject } of queue) {
         try {
           const res = await rcon.send(cmd);
+          console.log(`📤 Queued command executed: ${cmd}`);
           resolve(res);
         } catch (err) {
+          console.error(`❌ Queued command failed: ${cmd} - ${err.message}`);
           reject(err);
         }
       }
@@ -102,6 +101,7 @@ async function sendRconCommand(cmd, timeout = 10000) {
       const client = await connectRcon();
 
       const timer = setTimeout(() => {
+        console.error(`⏱️ RCON command timeout: ${cmd}`);
         reject(new Error("RCON command timed out"));
       }, timeout);
 
@@ -112,7 +112,7 @@ async function sendRconCommand(cmd, timeout = 10000) {
       resolve(res);
 
     } catch (err) {
-      console.error(`❌ RCON command failed: ${cmd}`, err.message);
+      console.error(`❌ RCON command failed: ${cmd} - ${err.message}`);
       reject(err);
     }
   });
