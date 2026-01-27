@@ -1,95 +1,57 @@
-const { Rcon } = require("rcon-client");
+const { UDP_RCON } = require("@hidev/udp-rcon");
 
 let rcon = null;
 let isConnected = false;
-let isConnecting = false;
 let commandQueue = [];
 
 // =========================
-// RCON CONFIG (UDP)
+// CONFIG
 // =========================
-const RCON_PORT = 5002;
-
-const RCON_CONFIG = {
-  host: process.env.RCON_HOST || "136.243.133.169",
-  port: RCON_PORT,
-  password: process.env.RCON_PASSWORD,
-  tcp: false,      // 🔹 UDP
-  challenge: false
-};
-
-// Hard fail if someone tries to override the port
-if (process.env.RCON_PORT && parseInt(process.env.RCON_PORT) !== RCON_PORT) {
-  console.error("❌ RCON_PORT override detected. Port 5002 is mandatory.");
-  process.exit(1);
-}
+const RCON_HOST = process.env.RCON_HOST;
+const RCON_PORT = parseInt(process.env.RCON_PORT, 10) || 5002;
+const RCON_PASSWORD = process.env.RCON_PASSWORD;
 
 // =========================
 // CONNECT FUNCTION
 // =========================
-async function connectRcon() {
-  if (isConnected && rcon) return rcon;
-  if (isConnecting) return;
+function connectRcon() {
+  if (rcon && isConnected) return rcon;
 
-  isConnecting = true;
-  console.log(`🔄 Connecting to RCON (UDP) ${RCON_CONFIG.host}:${RCON_PORT}...`);
+  rcon = new UDP_RCON(RCON_HOST, RCON_PORT, RCON_PASSWORD);
 
-  try {
-    rcon = new Rcon(RCON_CONFIG);
-
-    rcon.on("connect", () => console.log("🔌 RCON socket connected (UDP)"));
-    rcon.on("ready", () => {
-      isConnected = true;
-      isConnecting = false;
-      console.log("✅ RCON ready (port 5002 confirmed)");
-    });
-
-    rcon.on("end", () => {
-      console.warn("⚠️ RCON disconnected, retrying in 3s...");
-      isConnected = false;
-      isConnecting = false;
-      setTimeout(connectRcon, 3000);
-    });
-
-    rcon.on("error", (err) => {
-      console.error("❌ RCON error:", err.message);
-    });
-
-    await rcon.connect();
+  rcon.on("connect", () => {
+    console.log(`🔌 RCON UDP socket ready: ${RCON_HOST}:${RCON_PORT}`);
+    isConnected = true;
 
     // Flush queued commands
     if (commandQueue.length > 0) {
-      console.log(`📦 Sending ${commandQueue.length} queued RCON command(s)`);
       const queue = [...commandQueue];
       commandQueue = [];
-
-      for (const { cmd, resolve, reject } of queue) {
-        try {
-          const res = await rcon.send(cmd);
-          console.log(`📤 Queued command executed: ${cmd}`);
-          resolve(res);
-        } catch (err) {
-          console.error(`❌ Queued command failed: ${cmd} - ${err.message}`);
-          reject(err);
-        }
-      }
+      queue.forEach(({ cmd, resolve, reject }) => {
+        sendRconCommand(cmd).then(resolve).catch(reject);
+      });
     }
+  });
 
-    return rcon;
-
-  } catch (err) {
-    console.error("❌ RCON connection failed:", err.message);
+  rcon.on("error", (err) => {
+    console.error("❌ RCON UDP error:", err.message);
     isConnected = false;
-    isConnecting = false;
-    setTimeout(connectRcon, 5000);
-  }
+  });
+
+  rcon.on("end", () => {
+    console.warn("⚠️ RCON UDP connection ended, reconnecting in 3s...");
+    isConnected = false;
+    setTimeout(connectRcon, 3000);
+  });
+
+  return rcon;
 }
 
 // =========================
-// SEND COMMAND FUNCTION
+// SEND COMMAND
 // =========================
-async function sendRconCommand(cmd, timeout = 10000) {
-  return new Promise(async (resolve, reject) => {
+function sendRconCommand(cmd, timeout = 10000) {
+  return new Promise((resolve, reject) => {
     if (!isConnected) {
       console.warn(`⚠️ RCON offline, queueing command: ${cmd}`);
       commandQueue.push({ cmd, resolve, reject });
@@ -97,31 +59,25 @@ async function sendRconCommand(cmd, timeout = 10000) {
       return;
     }
 
+    const timer = setTimeout(() => reject(new Error("RCON UDP command timed out")), timeout);
+
     try {
-      const client = await connectRcon();
-
-      const timer = setTimeout(() => {
-        console.error(`⏱️ RCON command timeout: ${cmd}`);
-        reject(new Error("RCON command timed out"));
-      }, timeout);
-
-      const res = await client.send(cmd);
-      clearTimeout(timer);
-
-      console.log(`📤 RCON > ${cmd}`);
-      resolve(res);
-
+      rcon.send(cmd, (res) => {
+        clearTimeout(timer);
+        console.log(`📤 RCON UDP > ${cmd}`);
+        resolve(res);
+      }, (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
     } catch (err) {
-      console.error(`❌ RCON command failed: ${cmd} - ${err.message}`);
+      clearTimeout(timer);
       reject(err);
     }
   });
 }
 
 // =========================
-// EXPORTS
+// EXPORT
 // =========================
-module.exports = {
-  connectRcon,
-  sendRconCommand
-};
+module.exports = { connectRcon, sendRconCommand };
