@@ -1,75 +1,84 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
-const { addEventSignup, getAllEvents } = require("../database/events");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { saveEvent, getAllEvents } = require("../database/events");
+const { isStaff } = require("../utils/permissions");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("eventapp")
-    .setDescription("Sign up for a BattleFront event"),
+    .setName("createevent")
+    .setDescription("Create a new event")
+    .addStringOption(opt =>
+      opt.setName("name")
+        .setDescription("Event name")
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("description")
+        .setDescription("Event description")
+        .setRequired(true)
+    )
+    .addIntegerOption(opt =>
+      opt.setName("maxplayers")
+        .setDescription("Maximum participants")
+        .setRequired(true)
+    )
+    .addIntegerOption(opt =>
+      opt.setName("groupsize")
+        .setDescription("Squad size (optional)")
+        .setRequired(false)
+    )
+    .addStringOption(opt =>
+      opt.setName("date")
+        .setDescription("Event date (e.g., 27/01/2026)")
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("time")
+        .setDescription("Event time (e.g., 18:00 UTC)")
+        .setRequired(true)
+    ),
 
   async execute(interaction) {
-    const events = Object.values(getAllEvents()).filter(ev => ev.signups.length < ev.maxPlayers);
-    if (!events.length) {
-      return interaction.reply({ content: "⚠️ There are no open events available.", ephemeral: true });
+    if (!isStaff(interaction.member)) {
+      return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
     }
 
-    // Create dropdown options
-    const options = events.map(ev => ({
-      label: ev.name,
-      value: ev.id,
-      description: ev.description.substring(0, 100) // max 100 chars for Discord dropdown
-    }));
+    const name = interaction.options.getString("name");
+    const description = interaction.options.getString("description");
+    const maxPlayers = interaction.options.getInteger("maxplayers");
+    const groupSize = interaction.options.getInteger("groupsize") || null;
+    const date = interaction.options.getString("date");
+    const time = interaction.options.getString("time");
 
-    const row = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId("event_select")
-        .setPlaceholder("Select an event to join")
-        .addOptions(options)
-    );
+    const eventId = name.toLowerCase().replace(/\s+/g, "_");
+    const allEvents = getAllEvents();
 
-    await interaction.reply({ content: "📋 Select an event to join:", components: [row], ephemeral: true });
+    if (allEvents[eventId]) {
+      return interaction.reply({ content: "❌ An event with this name already exists.", ephemeral: true });
+    }
 
-    const filter = i => i.customId === "event_select" && i.user.id === interaction.user.id;
-    const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000, max: 1 });
-
-    collector.on("collect", async i => {
-      const eventId = i.values[0];
-      const event = events.find(ev => ev.id === eventId);
-      if (!event) return i.update({ content: "❌ Event not found.", components: [], ephemeral: true });
-
-      // Add signup
-      if (event.signups.find(s => s.userId === interaction.user.id)) {
-        return i.update({ content: "⚠️ You are already signed up for this event.", components: [], ephemeral: true });
-      }
-
-      event.signups.push({ userId: interaction.user.id, role: "pending" });
-      addEventSignup(eventId, { userId: interaction.user.id, role: "pending" });
-
-      const embed = new EmbedBuilder()
-        .setTitle(`✅ Signed Up: ${event.name}`)
-        .setDescription(event.description)
-        .addFields(
-          { name: "Max Players", value: `${event.maxPlayers}`, inline: true },
-          { name: "Group Size", value: `${event.groupSize || "N/A"}`, inline: true },
-          { name: "Date", value: `${event.date}`, inline: true },
-          { name: "Time", value: `${event.time}`, inline: true },
-          { name: "Remaining Spots", value: `${event.maxPlayers - event.signups.length}`, inline: true }
-        )
-        .setColor(0x1abc9c)
-        .setTimestamp();
-
-      await i.update({ content: null, embeds: [embed], components: [], ephemeral: true });
-
-      // Optionally notify mod channel
-      const modChannel = interaction.client.channels.cache.get(process.env.MOD_LOG_CHANNEL);
-      if (modChannel) {
-        modChannel.send({ content: `<@${interaction.user.id}> signed up for **${event.name}**` });
-      }
+    saveEvent(eventId, {
+      id: eventId,
+      name,
+      description,
+      maxPlayers,
+      groupSize,
+      date,
+      time,
+      signups: []
     });
 
-    collector.on("end", collected => {
-      if (collected.size === 0) {
-        interaction.editReply({ content: "⌛ Event selection timed out.", components: [], ephemeral: true }).catch(() => {});
-      }
-    });
+    const embed = new EmbedBuilder()
+      .setTitle(`🆕 Event Created: ${name}`)
+      .setDescription(description)
+      .addFields(
+        { name: "Max Players", value: `${maxPlayers}`, inline: true },
+        { name: "Group Size", value: `${groupSize || "N/A"}`, inline: true },
+        { name: "Date", value: date, inline: true },
+        { name: "Time", value: time, inline: true }
+      )
+      .setColor(0x00ff00)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
   }
 };
