@@ -125,8 +125,8 @@ client.once("ready", async () => {
     // This is a one-time test snippet to check RCON connectivity
     (async () => {
       try {
-        console.log("📡 Sending test RCON command: status");
-        const response = await sendRconCommand("status", 15000); // 15s timeout
+        console.log("📡 Sending test RCON command: playerList");
+        const response = await sendRconCommand("playerList", 15000); // 15s timeout
         console.log("✅ RCON Response:", response);
       } catch (err) {
         console.error("❌ RCON test command failed:", err);
