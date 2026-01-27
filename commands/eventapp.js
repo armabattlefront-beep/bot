@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { addEventSignup, getEvent, getAllEvents } = require("../database/events");
+const { signupEvent, getEvent, addToWaitingList } = require("../database/apps");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -13,31 +13,33 @@ module.exports = {
 
   async execute(interaction) {
     const userId = interaction.user.id;
-    const eventName = interaction.options.getString("event");
+    const eventId = interaction.options.getString("event");
 
-    const event = getEvent(eventName);
-    if (!event) return interaction.reply({ content: `❌ Event "${eventName}" not found.`, ephemeral: true });
+    const event = getEvent(eventId);
+    if (!event) return interaction.reply({ content: `❌ Event "${eventId}" not found.`, ephemeral: true });
 
-    // Check if full
-    if (event.signups.length >= event.maxSpots) {
-      return interaction.reply({ content: `⚠️ Event full. You're on the waiting list.`, ephemeral: true });
+    // Check if user already signed up or waiting
+    if (event.participants.find(p => p.id === userId) || event.waitingList?.includes(userId)) {
+      return interaction.reply({ content: `⚠️ You are already signed up or on the waiting list for **${event.name}**.`, ephemeral: true });
     }
 
-    // Add signup
-    addEventSignup(eventName, { userId, role: "pending" });
+    const spotsLeft = event.maxPlayers - event.participants.length;
 
-    // Notify user
-    interaction.reply({
-      content: `✅ You have signed up for **${eventName}**!\nRemaining spots: ${event.maxSpots - event.signups.length}`
-    });
+    if (spotsLeft > 0) {
+      signupEvent(eventId, userId);
+      interaction.reply({ content: `✅ You have signed up for **${event.name}**!\nRemaining spots: ${spotsLeft - 1}` });
+    } else {
+      addToWaitingList(eventId, userId);
+      interaction.reply({ content: `⚠️ Event full. You have been added to the waiting list for **${event.name}**.` });
+    }
 
     // Notify mod channel
     const modChannel = interaction.client.channels.cache.get(event.modChannel || "");
     if (modChannel) {
       const embed = new EmbedBuilder()
         .setTitle("📝 Event Signup")
-        .setDescription(`<@${userId}> signed up for **${eventName}**`)
-        .addFields({ name: "Remaining Spots", value: `${event.maxSpots - event.signups.length}`, inline: true })
+        .setDescription(`<@${userId}> signed up for **${event.name}**`)
+        .addFields({ name: "Remaining Spots", value: `${Math.max(spotsLeft - 1, 0)}`, inline: true })
         .setColor(0x1abc9c)
         .setTimestamp();
       modChannel.send({ embeds: [embed] });

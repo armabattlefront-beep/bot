@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { isStaff } = require("../utils/permissions");
-const { addStaffApplication, getStaffApplications } = require("../database/staffApplications");
+const { addStaffApplication, getStaffApplications } = require("../database/apps"); // <- points to apps.js
 const { MOD_LOG_CHANNEL } = require("../config");
 
 module.exports = {

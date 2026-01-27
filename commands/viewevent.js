@@ -1,38 +1,40 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { isStaff } = require("../utils/permissions");
-const { getEvent } = require("../database/events");
+const { getEventApplications } = require("../database/apps");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("viewevent")
-    .setDescription("View details and signups of an event")
+    .setDescription("View participants, status, and groups for an event")
     .addStringOption(opt =>
-      opt.setName("name")
-        .setDescription("Event name to view")
+      opt.setName("event")
+        .setDescription("Select the event")
         .setRequired(true)
     ),
 
   async execute(interaction) {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: "🚫 Staff only", ephemeral: true });
-    }
+    if (!isStaff(interaction.member)) 
+      return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
 
-    const name = interaction.options.getString("name");
-    const event = getEvent(name);
-    if (!event) {
-      return interaction.reply({ content: `❌ Event "${name}" not found.`, ephemeral: true });
+    const eventId = interaction.options.getString("event");
+    const participants = getEventApplications(eventId);
+
+    if (!participants || participants.length === 0) {
+      return interaction.reply({ content: "⚠️ No participants found for this event.", ephemeral: true });
     }
 
     const embed = new EmbedBuilder()
-      .setTitle(`📋 Event: ${event.name}`)
-      .addFields(
-        { name: "Max Spots", value: `${event.maxSpots}`, inline: true },
-        { name: "Current Signups", value: `${event.signups.length}`, inline: true },
-        { name: "Remaining Spots", value: `${event.maxSpots - event.signups.length}`, inline: true },
-        { name: "Participants", value: event.signups.map(s => `<@${s.userId}>`).join("\n") || "None" }
-      )
-      .setColor(0x00ff99)
+      .setTitle(`📋 Event: ${eventId}`)
+      .setColor(0x1abc9c)
       .setTimestamp();
+
+    participants.forEach(p => {
+      embed.addFields({
+        name: `<@${p.userId}>`,
+        value: `Status: ${p.status || "pending"} | Group: ${p.group || "Unassigned"}`,
+        inline: false
+      });
+    });
 
     interaction.reply({ embeds: [embed] });
   }
