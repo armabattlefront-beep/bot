@@ -1,27 +1,25 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { isStaff } = require("../utils/permissions");
-const { getAllEvents } = require("../database/events");
+const { getAllEvents, saveEvent } = require("../database/events");
 const { MOD_LOG_CHANNEL } = require("../config");
-const fs = require("fs");
-const path = require("path");
-const FILE_PATH = path.join(__dirname, "../data/events.json");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("deleteevent")
     .setDescription("Delete an existing event and all its signups")
-    .addStringOption(opt =>
-      opt
+    .addStringOption(opt => {
+      const allEvents = getAllEvents();
+      const choices = Object.values(allEvents).map(e => ({
+        name: `${e.name} (${e.id})`,
+        value: e.id
+      }));
+
+      return opt
         .setName("event")
-        .setDescription("Event ID to delete")
+        .setDescription("Select the event to delete")
         .setRequired(true)
-        .addChoices(
-          ...Object.values(getAllEvents()).map(event => ({
-            name: event.name,
-            value: event.id
-          }))
-        )
-    ),
+        .addChoices(...choices);
+    }),
 
   async execute(interaction) {
     if (!isStaff(interaction.member)) {
@@ -29,15 +27,15 @@ module.exports = {
     }
 
     const eventId = interaction.options.getString("event");
-    const events = getAllEvents();
+    const allEvents = getAllEvents();
 
-    if (!events[eventId]) {
+    if (!allEvents[eventId]) {
       return interaction.reply({ content: `❌ Event "${eventId}" not found.`, ephemeral: true });
     }
 
     // Delete event
-    delete events[eventId];
-    fs.writeFileSync(FILE_PATH, JSON.stringify(events, null, 2));
+    delete allEvents[eventId];
+    saveEvent(null, allEvents); // Save entire updated events object
 
     interaction.reply({ content: `✅ Event "${eventId}" and all its signups have been deleted.` });
 

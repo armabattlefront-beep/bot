@@ -5,11 +5,13 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("editevent")
     .setDescription("Edit an existing event")
+    // Required first
     .addStringOption(opt =>
       opt.setName("event")
          .setDescription("Event name to edit")
          .setRequired(true)
     )
+    // Optional after required
     .addIntegerOption(opt =>
       opt.setName("maxplayers")
          .setDescription("Set maximum number of participants")
@@ -22,17 +24,17 @@ module.exports = {
     )
     .addStringOption(opt =>
       opt.setName("description")
-         .setDescription("Edit the event description")
+         .setDescription("Update event description")
          .setRequired(false)
     )
     .addStringOption(opt =>
       opt.setName("date")
-         .setDescription("Edit the event date")
+         .setDescription("Update event date")
          .setRequired(false)
     )
     .addStringOption(opt =>
       opt.setName("time")
-         .setDescription("Edit the event time")
+         .setDescription("Update event time")
          .setRequired(false)
     ),
 
@@ -59,13 +61,13 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setTitle(`✏️ Event Updated: ${event.name}`)
-      .setDescription(event.description)
       .addFields(
         { name: "Max Players", value: `${event.maxPlayers}`, inline: true },
         { name: "Group Size", value: `${event.groupSize || "N/A"}`, inline: true },
-        { name: "Date", value: event.date, inline: true },
-        { name: "Time", value: event.time, inline: true }
+        { name: "Date", value: `${event.date}`, inline: true },
+        { name: "Time", value: `${event.time}`, inline: true }
       )
+      .setDescription(event.description)
       .setColor(0xffd700)
       .setTimestamp();
 
