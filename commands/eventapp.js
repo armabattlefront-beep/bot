@@ -1,51 +1,54 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { signupEvent, getAllEvents, getEvent } = require("../database/events");
+const { addEventSignup, getEvent, getAllEvents } = require("../database/events");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("eventapp")
     .setDescription("Sign up for a BattleFront event")
-    .addStringOption(opt =>
-      opt.setName("event")
-         .setDescription("Select the event to join")
-         .setRequired(true)
-         .setAutocomplete(true) // enable autocomplete
-    ),
+    .addStringOption(opt => {
+      const events = Object.values(getAllEvents())
+        .filter(ev => ev.signups.length < ev.maxPlayers)
+        .map(ev => ev.name);
 
-  async autocomplete(interaction) {
-    const focused = interaction.options.getFocused();
-    const events = getAllEvents();
-    const choices = events.map(ev => ev.name);
-    const filtered = choices.filter(ev => ev.toLowerCase().includes(focused.toLowerCase()));
-    await interaction.respond(filtered.map(name => ({ name, value: name })));
-  },
+      opt.setName("event")
+        .setDescription("Select an event to join")
+        .setRequired(true);
+
+      if (events.length > 0) opt.addChoices(...events.map(e => ({ name: e, value: e })));
+      return opt;
+    }),
 
   async execute(interaction) {
     const userId = interaction.user.id;
     const eventName = interaction.options.getString("event");
+    const eventId = eventName.toLowerCase().replace(/\s+/g, "_");
+    const event = getEvent(eventId);
 
-    const event = getEvent(eventName.toLowerCase().replace(/\s+/g, "_"));
     if (!event) return interaction.reply({ content: `❌ Event "${eventName}" not found.`, ephemeral: true });
 
     // Check if full
-    if (event.participants.length >= event.maxPlayers) {
+    if (event.signups.length >= event.maxPlayers) {
       return interaction.reply({ content: `⚠️ Event full. You're on the waiting list.`, ephemeral: true });
     }
 
-    // Sign up
-    signupEvent(eventName.toLowerCase().replace(/\s+/g, "_"), userId);
+    // Add signup
+    addEventSignup(eventId, { userId, role: "pending" });
 
-    interaction.reply({
-      content: `✅ You have signed up for **${event.name}**!\nRemaining spots: ${event.maxPlayers - event.participants.length}`
+    // Confirm to user
+    await interaction.reply({
+      content: `✅ You have signed up for **${event.name}**!\nRemaining spots: ${event.maxPlayers - event.signups.length}`
     });
 
-    // Optionally notify mod channel if set
+    // Notify mod channel
     const modChannel = interaction.client.channels.cache.get(event.modChannel || "");
     if (modChannel) {
       const embed = new EmbedBuilder()
         .setTitle("📝 Event Signup")
         .setDescription(`<@${userId}> signed up for **${event.name}**`)
-        .addFields({ name: "Remaining Spots", value: `${event.maxPlayers - event.participants.length}`, inline: true })
+        .addFields(
+          { name: "Remaining Spots", value: `${event.maxPlayers - event.signups.length}`, inline: true },
+          { name: "Group Size", value: `${event.groupSize || "N/A"}`, inline: true }
+        )
         .setColor(0x1abc9c)
         .setTimestamp();
       modChannel.send({ embeds: [embed] });
