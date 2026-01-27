@@ -1,5 +1,4 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { isStaff } = require("../utils/permissions");
 const { createEvent } = require("../database/events");
 
 module.exports = {
@@ -8,31 +7,32 @@ module.exports = {
     .setDescription("Create a new BattleFront event")
     .addStringOption(opt =>
       opt.setName("name")
-        .setDescription("Event name")
+        .setDescription("Name of the event")
         .setRequired(true)
     )
     .addIntegerOption(opt =>
-      opt.setName("maxspots")
-        .setDescription("Maximum participants")
+      opt.setName("maxplayers")
+        .setDescription("Maximum number of players")
         .setRequired(true)
     )
-    .addStringOption(opt =>
-      opt.setName("modchannel")
-        .setDescription("Channel ID for mod notifications")
+    .addIntegerOption(opt =>
+      opt.setName("groupsize")
+        .setDescription("Optional: number of players per squad (default 6)")
         .setRequired(false)
     ),
 
   async execute(interaction) {
-    if (!isStaff(interaction.member))
-      return interaction.reply({ content: "🚫 Staff only", ephemeral: true });
-
     const name = interaction.options.getString("name");
-    const maxSpots = interaction.options.getInteger("maxspots");
-    const modChannel = interaction.options.getString("modchannel") || null;
+    const maxPlayers = interaction.options.getInteger("maxplayers");
+    const groupSize = interaction.options.getInteger("groupsize") || 6;
 
-    const created = createEvent(name, maxSpots, modChannel);
-    if (!created) return interaction.reply({ content: `⚠️ Event "${name}" already exists.`, ephemeral: true });
+    const id = createEvent(name, maxPlayers, groupSize);
+    if (!id) {
+      return interaction.reply({ content: "⚠️ An event with that name already exists!", ephemeral: true });
+    }
 
-    interaction.reply({ content: `✅ Event "${name}" created with ${maxSpots} spots.` });
+    interaction.reply({
+      content: `✅ Event **${name}** created! Max Players: ${maxPlayers}, Group Size: ${groupSize}`
+    });
   }
 };
