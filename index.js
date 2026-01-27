@@ -113,8 +113,29 @@ client.once("ready", async () => {
   // =======================
   // RCON CONNECTION
   // =======================
-  const { connectRcon } = require("./rconClient");
-  connectRcon().catch(err => console.error("❌ RCON startup failed:", err));
+  const { connectRcon, sendRconCommand } = require("./rconClient");
+
+  try {
+    await connectRcon();
+    console.log("✅ UDP RCON ready");
+
+    // =======================
+    // TEST RCON COMMANDS
+    // =======================
+    // This is a one-time test snippet to check RCON connectivity
+    (async () => {
+      try {
+        console.log("📡 Sending test RCON command: status");
+        const response = await sendRconCommand("status", 15000); // 15s timeout
+        console.log("✅ RCON Response:", response);
+      } catch (err) {
+        console.error("❌ RCON test command failed:", err);
+      }
+    })();
+
+  } catch (err) {
+    console.error("❌ RCON startup failed:", err);
+  }
 });
 
 // =======================
