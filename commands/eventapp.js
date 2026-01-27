@@ -8,7 +8,12 @@ module.exports = {
 
   async execute(interaction) {
     const allEvents = getAllEvents();
-    const openEvents = Object.values(allEvents).filter(e => e.signups.length < e.maxPlayers);
+
+    // Filter events that have free slots
+    const openEvents = Object.values(allEvents).filter(e => {
+      if (!e.signups) e.signups = [];
+      return e.signups.length < e.maxPlayers;
+    });
 
     if (!openEvents.length) {
       return interaction.reply({ content: "❌ No open events at the moment.", ephemeral: true });
@@ -20,7 +25,7 @@ module.exports = {
       return {
         label: e.name.length > 25 ? e.name.slice(0, 22) + "..." : e.name,
         value: e.id,
-        description: `${e.date} | ${e.time} | ${shortDesc}`.slice(0, 100) // Discord limit 100
+        description: `${e.date} | ${e.time} | ${shortDesc}`.slice(0, 100)
       };
     });
 
@@ -39,14 +44,28 @@ module.exports = {
     collector.on("collect", async i => {
       const eventId = i.values[0];
       const event = allEvents[eventId];
-
       if (!event) return i.update({ content: "❌ Event not found.", components: [], ephemeral: true });
 
+      // Fetch member and check if staff
+      const member = await i.guild.members.fetch(i.user.id);
+      const isStaff = member.roles.cache.some(r => r.name.toLowerCase() === "staff");
+
       try {
-        const success = addEventSignup(eventId, i.user.id);
+        const success = addEventSignup(eventId, i.user.id, isStaff);
         if (!success) {
           return i.update({ content: "❌ You are already signed up for this event.", components: [], ephemeral: true });
         }
+
+        // Separate player and staff signups
+        const playerSignups = event.signups
+          .filter(s => !s.isStaff)
+          .map(s => `<@${s.id}>`)
+          .join(", ") || "None";
+
+        const staffSignups = event.signups
+          .filter(s => s.isStaff)
+          .map(s => `<@${s.id}>`)
+          .join(", ") || "None";
 
         const embed = new EmbedBuilder()
           .setTitle(`✅ Signed Up: ${event.name}`)
@@ -55,9 +74,11 @@ module.exports = {
             { name: "Date", value: event.date, inline: true },
             { name: "Time", value: event.time, inline: true },
             { name: "Group Size", value: event.groupSize || "N/A", inline: true },
+            { name: "Players", value: playerSignups, inline: false },
+            { name: "Staff", value: staffSignups, inline: false },
             { name: "Current Signups", value: `${event.signups.length}/${event.maxPlayers}`, inline: true }
           )
-          .setColor(0x00ff00)
+          .setColor(isStaff ? 0xff9900 : 0x00ff00)
           .setTimestamp();
 
         await i.update({ content: "You have successfully signed up!", embeds: [embed], components: [], ephemeral: true });

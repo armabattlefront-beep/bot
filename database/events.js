@@ -35,19 +35,22 @@ function saveEvent(eventId, eventData) {
   saveAll();
 }
 
-// Add a signup
-function addEventSignup(eventId, userId) {
+// Add a signup (supports staff)
+function addEventSignup(eventId, userId, isStaff = false) {
   const event = getEvent(eventId);
   if (!event) return false;
 
   // Ensure signups array exists
   if (!Array.isArray(event.signups)) event.signups = [];
 
-  // Check if already signed up
-  if (event.signups.includes(userId)) return false;
+  // Normalize old plain-ID signups
+  event.signups = event.signups.map(s => (typeof s === "string" ? { id: s, isStaff: false } : s));
 
-  // Add user
-  event.signups.push(userId);
+  // Check if user is already signed up
+  if (event.signups.some(s => s.id === userId)) return false;
+
+  // Add the new signup
+  event.signups.push({ id: userId, isStaff });
   saveEvent(eventId, event);
   return true;
 }
@@ -57,7 +60,10 @@ function removeEventSignup(eventId, userId) {
   const event = getEvent(eventId);
   if (!event || !Array.isArray(event.signups)) return false;
 
-  const index = event.signups.indexOf(userId);
+  // Normalize old plain-ID signups
+  event.signups = event.signups.map(s => (typeof s === "string" ? { id: s, isStaff: false } : s));
+
+  const index = event.signups.findIndex(s => s.id === userId);
   if (index === -1) return false;
 
   event.signups.splice(index, 1);
