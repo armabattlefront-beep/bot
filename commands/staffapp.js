@@ -1,54 +1,56 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { addApplication, getAllApplications, updateStatus } = require("../database/apps");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { isStaff } = require("../utils/permissions");
+const { addStaffApplication, getStaffApplications } = require("../database/staffApplications");
+const { MOD_LOG_CHANNEL } = require("../config");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("staffapp")
-    .setDescription("Submit or manage staff applications")
-    .addSubcommand(sub => sub
-      .setName("submit")
-      .setDescription("Submit a staff application")
-      .addStringOption(o => o.setName("q1").setDescription("Why do you want to be staff?").setRequired(true))
-      .addStringOption(o => o.setName("q2").setDescription("Experience / Skills").setRequired(true)))
-    .addSubcommand(sub => sub
-      .setName("view")
-      .setDescription("Staff: View all applications"))
-    .addSubcommand(sub => sub
-      .setName("accept")
-      .setDescription("Staff: Accept an application")
-      .addStringOption(o => o.setName("userid").setDescription("Discord user ID").setRequired(true)))
-    .addSubcommand(sub => sub
-      .setName("reject")
-      .setDescription("Staff: Reject an application")
-      .addStringOption(o => o.setName("userid").setDescription("Discord user ID").setRequired(true))),
-  
+    .setDescription("Apply to become a staff member")
+    .addStringOption(opt =>
+      opt.setName("username")
+        .setDescription("Your Discord username or gamertag")
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("reason")
+        .setDescription("Why you want to join staff")
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("experience")
+        .setDescription("Any relevant experience")
+        .setRequired(false)
+    ),
+
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    
-    if (sub === "submit") {
-      const q1 = interaction.options.getString("q1");
-      const q2 = interaction.options.getString("q2");
-      const success = addApplication(interaction.user.id, { q1, q2 });
-      if (!success) return interaction.reply({ content: "⚠️ You already have a pending application.", ephemeral: true });
-      return interaction.reply({ content: "✅ Application submitted!" });
-    }
-    
-    if (!isStaff(interaction.member)) return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
+    const userId = interaction.user.id;
+    const username = interaction.options.getString("username");
+    const reason = interaction.options.getString("reason");
+    const experience = interaction.options.getString("experience") || "None";
 
-    if (sub === "view") {
-      const apps = getAllApplications();
-      if (!apps.length) return interaction.reply({ content: "No applications found." });
-      const list = apps.map(a => `<@${a.id}> - ${a.status}`).join("\n");
-      return interaction.reply({ content: list });
+    // Add application
+    const added = addStaffApplication(userId, { username, reason, experience, status: "pending" });
+    if (!added) {
+      return interaction.reply({ content: "⚠️ You already have a pending staff application.", ephemeral: true });
     }
 
-    if (sub === "accept" || sub === "reject") {
-      const userId = interaction.options.getString("userid");
-      const status = sub === "accept" ? "accepted" : "rejected";
-      const success = updateStatus(userId, status);
-      if (!success) return interaction.reply({ content: "❌ Application not found." });
-      return interaction.reply({ content: `✅ Application ${status} for <@${userId}>` });
+    interaction.reply({ content: "✅ Staff application submitted! You will be notified once reviewed.", ephemeral: true });
+
+    // Notify mod channel
+    const logCh = interaction.client.channels.cache.get(MOD_LOG_CHANNEL);
+    if (logCh) {
+      const embed = new EmbedBuilder()
+        .setTitle("📝 New Staff Application")
+        .setDescription(`<@${userId}> submitted a staff application`)
+        .addFields(
+          { name: "Username", value: username, inline: true },
+          { name: "Reason", value: reason, inline: false },
+          { name: "Experience", value: experience, inline: false }
+        )
+        .setColor(0xffd700)
+        .setTimestamp();
+      logCh.send({ embeds: [embed] });
     }
   }
 };

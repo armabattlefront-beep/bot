@@ -109,6 +109,12 @@ async function registerCommands() {
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   await registerCommands();
+
+  // =======================
+  // RCON CONNECTION
+  // =======================
+  const { connectRcon } = require("./rconClient");
+  connectRcon().catch(err => console.error("❌ RCON startup failed:", err));
 });
 
 // =======================
