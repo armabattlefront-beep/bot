@@ -6,6 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("createevent")
     .setDescription("Create a new event")
+    // ✅ REQUIRED options first
     .addStringOption(opt =>
       opt.setName("name")
         .setDescription("Event name")
@@ -21,11 +22,6 @@ module.exports = {
         .setDescription("Maximum participants")
         .setRequired(true)
     )
-    .addIntegerOption(opt =>
-      opt.setName("groupsize")
-        .setDescription("Squad size (optional)")
-        .setRequired(false)
-    )
     .addStringOption(opt =>
       opt.setName("date")
         .setDescription("Event date (e.g., 27/01/2026)")
@@ -35,6 +31,12 @@ module.exports = {
       opt.setName("time")
         .setDescription("Event time (e.g., 18:00 UTC)")
         .setRequired(true)
+    )
+    // Optional options go last
+    .addIntegerOption(opt =>
+      opt.setName("groupsize")
+        .setDescription("Squad size (optional)")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
