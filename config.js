@@ -20,7 +20,8 @@ module.exports = {
         ? process.env.SAFE_CHANNELS.split(",")
         : [
             "1332754586179473632",
-            "1332753537456803851"
+            "1332753537456803851",
+            "1435659408783708161"
         ],
 
     MOD_LOG_CHANNEL: process.env.MOD_LOG_CHANNEL || "1463209423907455057",
