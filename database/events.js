@@ -14,88 +14,61 @@ if (fs.existsSync(FILE_PATH)) {
   }
 }
 
-// Save function
-function save() {
+// Save all events
+function saveAll() {
   fs.writeFileSync(FILE_PATH, JSON.stringify(events, null, 2));
 }
 
-// Create a new event
-function createEvent(name, maxPlayers, groupSize = 6) {
-  const id = name.toLowerCase().replace(/\s+/g, "_");
-  if (events[id]) return false;
-  events[id] = { name, maxPlayers, groupSize, participants: [] };
-  save();
-  return id;
-}
-
-// Delete event
-function deleteEvent(id) {
-  if (!events[id]) return false;
-  delete events[id];
-  save();
-  return true;
+// Get single event by ID
+function getEvent(eventId) {
+  return events[eventId] || null;
 }
 
 // Get all events
 function getAllEvents() {
-  return Object.values(events);
-}
-
-// Get single event
-function getEvent(id) {
-  return events[id] || null;
-}
-
-// Sign up user
-function signupEvent(eventId, userId) {
-  const ev = events[eventId];
-  if (!ev) return false;
-  if (ev.participants.find(p => p.id === userId)) return false;
-  if (ev.participants.length >= ev.maxPlayers) return false;
-  ev.participants.push({ id: userId, status: "pending", group: null });
-  save();
-  return true;
-}
-
-// Assign user status (firstTeam/sub)
-function assignStatus(eventId, userId, status) {
-  const ev = events[eventId];
-  if (!ev) return false;
-  const p = ev.participants.find(p => p.id === userId);
-  if (!p) return false;
-  p.status = status;
-  save();
-  return true;
-}
-
-// Assign groups
-function assignGroups(eventId) {
-  const ev = events[eventId];
-  if (!ev) return false;
-  const size = ev.groupSize || 6;
-  const shuffled = [...ev.participants].sort(() => Math.random() - 0.5);
-  for (let i = 0; i < shuffled.length; i++) {
-    shuffled[i].group = Math.floor(i / size) + 1;
-  }
-  ev.participants = shuffled;
-  save();
-  return true;
+  return events;
 }
 
 // Save/update a single event
-function saveEvent(id, eventData) {
-  events[id] = eventData;
-  save();
+function saveEvent(eventId, eventData) {
+  events[eventId] = eventData;
+  saveAll();
+}
+
+// Add a signup
+function addEventSignup(eventId, userId) {
+  const event = getEvent(eventId);
+  if (!event) return false;
+
+  // Ensure signups array exists
+  if (!Array.isArray(event.signups)) event.signups = [];
+
+  // Check if already signed up
+  if (event.signups.includes(userId)) return false;
+
+  // Add user
+  event.signups.push(userId);
+  saveEvent(eventId, event);
+  return true;
+}
+
+// Optionally remove a signup
+function removeEventSignup(eventId, userId) {
+  const event = getEvent(eventId);
+  if (!event || !Array.isArray(event.signups)) return false;
+
+  const index = event.signups.indexOf(userId);
+  if (index === -1) return false;
+
+  event.signups.splice(index, 1);
+  saveEvent(eventId, event);
   return true;
 }
 
 module.exports = {
-  createEvent,
-  deleteEvent,
-  getAllEvents,
   getEvent,
-  signupEvent,
-  assignStatus,
-  assignGroups,
-  saveEvent  // <-- add this here
+  getAllEvents,
+  saveEvent,
+  addEventSignup,
+  removeEventSignup
 };

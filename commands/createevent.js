@@ -6,7 +6,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("createevent")
     .setDescription("Create a new event")
-    // ✅ REQUIRED options first
     .addStringOption(opt =>
       opt.setName("name")
         .setDescription("Event name")
@@ -22,6 +21,11 @@ module.exports = {
         .setDescription("Maximum participants")
         .setRequired(true)
     )
+    .addIntegerOption(opt =>
+      opt.setName("groupsize")
+        .setDescription("Squad size (optional)")
+        .setRequired(false)
+    )
     .addStringOption(opt =>
       opt.setName("date")
         .setDescription("Event date (e.g., 27/01/2026)")
@@ -31,12 +35,6 @@ module.exports = {
       opt.setName("time")
         .setDescription("Event time (e.g., 18:00 UTC)")
         .setRequired(true)
-    )
-    // Optional options go last
-    .addIntegerOption(opt =>
-      opt.setName("groupsize")
-        .setDescription("Squad size (optional)")
-        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -58,6 +56,7 @@ module.exports = {
       return interaction.reply({ content: "❌ An event with this name already exists.", ephemeral: true });
     }
 
+    // Save event
     saveEvent(eventId, {
       id: eventId,
       name,
@@ -69,6 +68,9 @@ module.exports = {
       signups: []
     });
 
+    // Short description for dropdown (max 90 chars)
+    const shortDesc = description.length > 90 ? description.slice(0, 87) + "..." : description;
+
     const embed = new EmbedBuilder()
       .setTitle(`🆕 Event Created: ${name}`)
       .setDescription(description)
@@ -78,6 +80,7 @@ module.exports = {
         { name: "Date", value: date, inline: true },
         { name: "Time", value: time, inline: true }
       )
+      .setFooter({ text: shortDesc }) // optional: show short desc in embed footer
       .setColor(0x00ff00)
       .setTimestamp();
 
