@@ -14,7 +14,7 @@ const RCON_CONFIG = {
   host: process.env.RCON_HOST || "136.243.133.169",
   port: RCON_PORT,
   password: process.env.RCON_PASSWORD,
-  tcp: true,
+  tcp: false,
   challenge: false
 };
 
