@@ -1,12 +1,15 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { saveEvent, getAllEvents } = require("../database/events");
-const { isStaff } = require("../utils/permissions");
+const fs = require("fs");
+
+// Load allowed roles from JSON
+const eventRoles = require("../eventRoles.json");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("createevent")
     .setDescription("Create a new event")
-    // Required options first
+    // Required options
     .addStringOption(opt =>
       opt.setName("name")
         .setDescription("Event name")
@@ -32,7 +35,7 @@ module.exports = {
         .setDescription("Event time (e.g., 18:00 UTC)")
         .setRequired(true)
     )
-    // Optional options last
+    // Optional options
     .addIntegerOption(opt =>
       opt.setName("groupsize")
         .setDescription("Squad size (optional)")
@@ -40,10 +43,15 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
+    // ✅ Dynamic staff check
+    const memberRoles = interaction.member.roles.cache.map(r => r.id);
+    const allowed = memberRoles.some(r => eventRoles.allowedRoles.includes(r));
+
+    if (!allowed) {
+      return interaction.reply({ content: "🚫 You do not have permission to create events.", ephemeral: true });
     }
 
+    // Gather options
     const name = interaction.options.getString("name");
     const description = interaction.options.getString("description");
     const maxPlayers = interaction.options.getInteger("maxplayers");
@@ -51,6 +59,7 @@ module.exports = {
     const time = interaction.options.getString("time");
     const groupSize = interaction.options.getInteger("groupsize") || null;
 
+    // Generate event ID
     const eventId = name.toLowerCase().replace(/\s+/g, "_");
     const allEvents = getAllEvents();
 
@@ -58,6 +67,7 @@ module.exports = {
       return interaction.reply({ content: "❌ An event with this name already exists.", ephemeral: true });
     }
 
+    // Save event
     saveEvent(eventId, {
       id: eventId,
       name,
@@ -69,6 +79,7 @@ module.exports = {
       signups: []
     });
 
+    // Send embed confirmation
     const embed = new EmbedBuilder()
       .setTitle(`🆕 Event Created: ${name}`)
       .setDescription(description)
