@@ -1,12 +1,9 @@
-const { UDPClient } = require("@hidev/udp-rcon");
+const Rcon = require("@hidev/udp-rcon");
 
 let rcon = null;
 let isConnected = false;
 let commandQueue = [];
 
-// =========================
-// RCON CONFIG
-// =========================
 const RCON_PORT = 5002;
 const RCON_HOST = process.env.RCON_HOST || "136.243.133.169";
 const RCON_PASSWORD = process.env.RCON_PASSWORD;
@@ -17,12 +14,10 @@ async function connectRcon() {
   try {
     console.log(`🔄 Connecting to UDP RCON (${RCON_HOST}:${RCON_PORT})...`);
 
-    rcon = new UDPClient(RCON_HOST, RCON_PORT, RCON_PASSWORD);
+    rcon = new Rcon(RCON_HOST, RCON_PORT, RCON_PASSWORD);
 
-    // Wait for connection
     await rcon.connect();
     isConnected = true;
-
     console.log("✅ UDP RCON ready");
 
     // Flush queued commands
@@ -49,9 +44,6 @@ async function connectRcon() {
   }
 }
 
-// =========================
-// Send command
-// =========================
 async function sendRconCommand(cmd, timeout = 10000) {
   return new Promise(async (resolve, reject) => {
     if (!isConnected) {
@@ -81,9 +73,6 @@ async function sendRconCommand(cmd, timeout = 10000) {
   });
 }
 
-// =========================
-// Exports
-// =========================
 module.exports = {
   connectRcon,
   sendRconCommand
