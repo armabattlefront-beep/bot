@@ -1,23 +1,29 @@
 const fs = require("fs");
 const path = require("path");
 
-// File path for persistent streamer storage
+// =======================
+// FILE PATH
+// =======================
 const STREAMER_FILE = path.join(__dirname, "streamers.json");
 
 let streamers = {};
 
-// Load streamers from file at startup
+// =======================
+// LOAD AT STARTUP
+// =======================
 if (fs.existsSync(STREAMER_FILE)) {
   try {
     const data = fs.readFileSync(STREAMER_FILE, "utf-8");
-    streamers = JSON.parse(data);
+    streamers = JSON.parse(data) || {};
   } catch (err) {
-    console.warn("⚠️ Failed to load streamers.json, starting with empty list.", err.message);
+    console.warn("⚠️ Failed to load streamers.json, starting empty:", err.message);
     streamers = {};
   }
 }
 
-// Save streamers to file safely
+// =======================
+// SAVE SAFELY
+// =======================
 function saveStreamers() {
   try {
     fs.writeFileSync(STREAMER_FILE, JSON.stringify(streamers, null, 2), "utf-8");
@@ -27,44 +33,56 @@ function saveStreamers() {
 }
 
 // =======================
-// EXPORT FUNCTIONS
+// PUBLIC API
 // =======================
 
-/**
- * Get all streamers as an array
- */
 function getAllStreamers() {
   return Object.values(streamers);
 }
 
-/**
- * Add a streamer to the list
- * @param {{id: string, name: string, platform: string}} streamerData
- */
-function addStreamer(streamerData) {
-  if (!streamerData.id || !streamerData.name || !streamerData.platform) {
-    throw new Error("Streamer must have id, name, and platform");
-  }
-  streamers[streamerData.id] = streamerData;
-  saveStreamers();
-}
-
-/**
- * Remove a streamer from the list by ID
- * @param {string} id
- */
-function removeStreamer(id) {
-  if (!streamers[id]) return;
-  delete streamers[id];
-  saveStreamers();
-}
-
-/**
- * Get a streamer by ID
- * @param {string} id
- */
 function getStreamer(id) {
   return streamers[id] || null;
 }
 
-module.exports = { getAllStreamers, addStreamer, removeStreamer, getStreamer };
+/**
+ * Add a streamer
+ * @returns {boolean} true if added, false if already exists
+ */
+function addStreamer({ id, name, platform }) {
+  if (!id || !name || !platform) {
+    throw new Error("Streamer must have id, name, and platform");
+  }
+
+  if (streamers[id]) {
+    return false; // already exists
+  }
+
+  streamers[id] = {
+    id,
+    name,
+    platform,
+    addedAt: Date.now()
+  };
+
+  saveStreamers();
+  return true;
+}
+
+/**
+ * Remove a streamer
+ * @returns {boolean} true if removed, false if not found
+ */
+function removeStreamer(id) {
+  if (!streamers[id]) return false;
+
+  delete streamers[id];
+  saveStreamers();
+  return true;
+}
+
+module.exports = {
+  getAllStreamers,
+  getStreamer,
+  addStreamer,
+  removeStreamer
+};
