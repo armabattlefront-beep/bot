@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const Canvas = require("@napi-rs/canvas");
-const { getUser } = require("../xp");
 const path = require("path");
+const { getUser } = require("../xp"); // ✅ Correct import
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,6 +10,9 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      // ----------------------------
+      // Fetch user data
+      // ----------------------------
       const userId = interaction.user.id;
       const user = getUser(userId);
 
@@ -18,37 +21,30 @@ module.exports = {
       const nextLevelXP = (level + 1) * 1000;
       const progress = Math.min(xp / nextLevelXP, 1);
 
+      // ----------------------------
+      // Canvas setup
+      // ----------------------------
       const width = 800;
       const height = 250;
       const canvas = Canvas.createCanvas(width, height);
       const ctx = canvas.getContext("2d");
 
-      // ----------------------------
       // Background
-      // ----------------------------
       ctx.fillStyle = "#0b1c26";
       ctx.fillRect(0, 0, width, height);
 
-      // ----------------------------
-      // Officer-only Gold Frame
-      // ----------------------------
-      let officerFrame = false;
-      if (level >= 30) officerFrame = true; // Lieutenant+
-      if (officerFrame) {
+      // Officer gold frame
+      if (level >= 30) {
         ctx.strokeStyle = "#FFD700";
         ctx.lineWidth = 8;
         ctx.strokeRect(4, 4, width - 8, height - 8);
       }
 
-      // ----------------------------
-      // Progress Bar Background
-      // ----------------------------
+      // Progress bar background
       ctx.fillStyle = "#1f2933";
       ctx.fillRect(40, 190, 720, 24);
 
-      // ----------------------------
-      // Animated-ish Progress Bar Fill (gradient)
-      // ----------------------------
+      // Progress bar fill
       const grad = ctx.createLinearGradient(40, 190, 40 + 720 * progress, 214);
       grad.addColorStop(0, "#00ff99");
       grad.addColorStop(1, "#00ccff");
@@ -66,18 +62,16 @@ module.exports = {
       ctx.fillText(`Level: ${level}`, 260, 100);
       ctx.fillText(`XP: ${xp} / ${nextLevelXP}`, 260, 135);
 
-      // ----------------------------
-      // Rank Name + Unit Insignia
-      // ----------------------------
+      // Rank name + insignia
       let rankName = "Recruit";
       let insigniaPath = "recruit.png";
 
-      if (level >= 5) { rankName = "Private"; insigniaPath = "sergeant.png"; }
-      if (level >= 10) { rankName = "Corporal"; insigniaPath = "sergeant.png"; }
-      if (level >= 20) { rankName = "Sergeant"; insigniaPath = "sergeant.png"; }
-      if (level >= 30) { rankName = "Lieutenant"; insigniaPath = "sergeant.png"; }
-      if (level >= 40) { rankName = "Captain"; insigniaPath = "sergeant.png"; }
-      if (level >= 50) { rankName = "Major"; insigniaPath = "sergeant.png"; }
+      if (level >= 5) rankName = "Private";
+      if (level >= 10) rankName = "Corporal";
+      if (level >= 20) rankName = "Sergeant";
+      if (level >= 30) rankName = "Lieutenant";
+      if (level >= 40) rankName = "Captain";
+      if (level >= 50) rankName = "Major";
 
       ctx.fillStyle = "#ffd700";
       ctx.font = "bold 26px Arial";
@@ -89,9 +83,7 @@ module.exports = {
       );
       ctx.drawImage(insignia, 200, 150, 40, 40);
 
-      // ----------------------------
-      // Seasonal Prestige Badge (if any)
-      // ----------------------------
+      // Prestige badge if any
       if (user.prestige && user.prestige > 0) {
         const prestige = await Canvas.loadImage(
           path.join(__dirname, "..", "assets", "prestige", `prestige${user.prestige}.png`)
@@ -99,9 +91,7 @@ module.exports = {
         ctx.drawImage(prestige, 700, 30, 60, 60);
       }
 
-      // ----------------------------
-      // Avatar
-      // ----------------------------
+      // User avatar
       const avatar = await Canvas.loadImage(
         interaction.user.displayAvatarURL({ extension: "png", size: 256 })
       );
@@ -113,11 +103,10 @@ module.exports = {
       ctx.drawImage(avatar, 50, 35, 180, 180);
       ctx.restore();
 
-      const attachment = new AttachmentBuilder(
-        await canvas.encode("png"),
-        { name: "rank.png" }
-      );
+      // Create attachment
+      const attachment = new AttachmentBuilder(await canvas.encode("png"), { name: "rank.png" });
 
+      // Reply
       await interaction.reply({ files: [attachment] });
 
     } catch (err) {
