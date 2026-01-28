@@ -6,7 +6,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("createevent")
     .setDescription("Create a new event")
-    // Required options
     .addStringOption(opt =>
       opt.setName("name")
         .setDescription("Event name")
@@ -32,43 +31,77 @@ module.exports = {
         .setDescription("Event time (HH:MM, 24h)")
         .setRequired(true)
     )
-    // Optional options
     .addIntegerOption(opt =>
       opt.setName("groupsize")
         .setDescription("Squad size (optional)")
-        .setRequired(false)
     )
     .addStringOption(opt =>
       opt.setName("voicechannel")
         .setDescription("Voice channel ID for Discord event")
-        .setRequired(false)
     ),
 
   async execute(interaction) {
-    // ✅ Permission check
+    // =======================
+    // PERMISSION CHECK
+    // =======================
     const memberRoles = interaction.member.roles.cache.map(r => r.id);
-    const allowed = memberRoles.some(r => eventRoles.allowedRoles.includes(r));
+    const allowed = memberRoles.some(r =>
+      eventRoles.allowedRoles.includes(r)
+    );
+
     if (!allowed) {
-      return interaction.reply({ content: "🚫 You do not have permission to create events.", ephemeral: true });
+      return interaction.reply({
+        content: "🚫 You do not have permission to create events.",
+        ephemeral: true
+      });
     }
 
-    // Gather options
-    const name = interaction.options.getString("name");
-    const description = interaction.options.getString("description");
+    // =======================
+    // INPUT COLLECTION
+    // =======================
+    const name = interaction.options.getString("name").trim();
+    const description = interaction.options.getString("description").trim();
     const maxPlayers = interaction.options.getInteger("maxplayers");
     const date = interaction.options.getString("date");
     const time = interaction.options.getString("time");
-    const groupSize = interaction.options.getInteger("groupsize") || null;
+    const groupSize = interaction.options.getInteger("groupsize") ?? null;
     const voiceChannelId = interaction.options.getString("voicechannel");
 
-    // Generate event ID
-    const eventId = name.toLowerCase().replace(/\s+/g, "_");
-    const allEvents = getAllEvents();
-    if (allEvents[eventId]) {
-      return interaction.reply({ content: "❌ An event with this name already exists.", ephemeral: true });
+    // =======================
+    // DATE VALIDATION (CRITICAL)
+    // =======================
+    const startTime = new Date(`${date}T${time}:00`);
+
+    if (isNaN(startTime.getTime())) {
+      return interaction.reply({
+        content: "❌ Invalid date or time format. Use YYYY-MM-DD and HH:MM (24h).",
+        ephemeral: true
+      });
     }
 
-    // Save in your custom database
+    if (startTime < new Date()) {
+      return interaction.reply({
+        content: "❌ Event time must be in the future.",
+        ephemeral: true
+      });
+    }
+
+    // =======================
+    // EVENT ID + DUPLICATE CHECK
+    // =======================
+    const eventId = name.toLowerCase().replace(/[^a-z0-9]/gi, "_");
+    const allEvents = getAllEvents();
+
+    if (allEvents[eventId]) {
+      return interaction.reply({
+        content: "❌ An event with this name already exists.",
+        ephemeral: true
+      });
+    }
+
+    // =======================
+    // SAVE TO DATABASE (SAFE DATA ONLY)
+    // =======================
     saveEvent(eventId, {
       id: eventId,
       name,
@@ -77,16 +110,19 @@ module.exports = {
       groupSize,
       date,
       time,
+      timestamp: startTime.getTime(),
       signups: []
     });
 
-    // Send embed confirmation
+    // =======================
+    // CONFIRMATION EMBED
+    // =======================
     const embed = new EmbedBuilder()
       .setTitle(`🆕 Event Created: ${name}`)
       .setDescription(description)
       .addFields(
         { name: "Max Players", value: `${maxPlayers}`, inline: true },
-        { name: "Group Size", value: `${groupSize || "N/A"}`, inline: true },
+        { name: "Group Size", value: groupSize ? `${groupSize}` : "N/A", inline: true },
         { name: "Date", value: date, inline: true },
         { name: "Time", value: time, inline: true }
       )
@@ -95,27 +131,30 @@ module.exports = {
 
     await interaction.reply({ embeds: [embed] });
 
-    // ✅ Create Discord Scheduled Event if voice channel ID provided
+    // =======================
+    // DISCORD SCHEDULED EVENT
+    // =======================
     if (voiceChannelId) {
       try {
-        const startTime = new Date(`${date}T${time}:00`);
-        const discordEvent = await interaction.guild.scheduledEvents.create({
-          name,
-          description: `${description}\n\nMax Players: ${maxPlayers}`,
-          scheduledStartTime: startTime,
-          privacyLevel: 2, // GUILD_ONLY
-          entityType: 2,   // VOICE channel event
-          channel: voiceChannelId
-        });
+        const discordEvent =
+          await interaction.guild.scheduledEvents.create({
+            name,
+            description: `${description}\n\nMax Players: ${maxPlayers}`,
+            scheduledStartTime: startTime,
+            privacyLevel: 2, // GUILD_ONLY
+            entityType: 2,   // VOICE
+            channel: voiceChannelId
+          });
 
         await interaction.followUp({
-          content: `✅ Discord Scheduled Event created: ${discordEvent.name}`,
+          content: `✅ Discord Scheduled Event created: **${discordEvent.name}**`,
           ephemeral: true
         });
       } catch (err) {
-        console.error(err);
+        console.error("❌ Discord event creation failed:", err);
+
         await interaction.followUp({
-          content: `❌ Failed to create Discord Scheduled Event: ${err.message}`,
+          content: "⚠️ Event saved, but Discord Scheduled Event failed to create.",
           ephemeral: true
         });
       }

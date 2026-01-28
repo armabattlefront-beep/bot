@@ -3,12 +3,13 @@
 // =======================
 require("dotenv").config();
 
-process.on("unhandledRejection", reason =>
-  console.error("❌ Unhandled Rejection:", reason)
-);
-process.on("uncaughtException", err =>
-  console.error("❌ Uncaught Exception:", err)
-);
+process.on("unhandledRejection", reason => {
+  console.error("❌ Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", err => {
+  console.error("❌ Uncaught Exception:", err);
+});
 
 // =======================
 // EXPRESS KEEP-ALIVE + DASHBOARD
@@ -17,10 +18,11 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get("/", (req, res) =>
+app.get("/", (_, res) =>
   res.status(200).send("BattleFront Madness bot online")
 );
-app.get("/health", (req, res) =>
+
+app.get("/health", (_, res) =>
   res.status(200).json({ status: "ok", uptime: process.uptime() })
 );
 
@@ -60,78 +62,66 @@ const client = new Client({
 // =======================
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter(file => file.endsWith(".js"));
 
-for (const file of commandFiles) {
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
   const command = require(path.join(commandsPath, file));
-  if (command.data && command.execute) {
+
+  if (command?.data && command?.execute) {
     client.commands.set(command.data.name, command);
   } else {
-    console.warn(`⚠️ ${file} missing data or execute`);
+    console.warn(`⚠️ ${file} missing data or execute()`);
   }
 }
 
 // =======================
-// REGISTER SLASH COMMANDS (AUTO)
+// REGISTER SLASH COMMANDS
 // =======================
 async function registerCommands() {
-  const token = process.env.TOKEN;
-  const clientId = process.env.CLIENT_ID;
-  const guildId = process.env.GUILD_ID;
+  const { TOKEN, CLIENT_ID, GUILD_ID } = process.env;
 
-  if (!token || !clientId || !guildId) {
+  if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
     console.error("❌ Missing TOKEN, CLIENT_ID, or GUILD_ID");
     return;
   }
 
-  const rest = new REST({ version: "10" }).setToken(token);
-  const commands = client.commands.map(cmd => cmd.data.toJSON());
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+  const body = client.commands.map(cmd => cmd.data.toJSON());
 
   try {
-    console.log(`⚡ Deploying ${commands.length} guild commands...`);
-
+    console.log(`⚡ Deploying ${body.length} guild commands...`);
     await rest.put(
-      Routes.applicationGuildCommands(clientId, guildId),
-      { body: commands }
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body }
     );
-
-    console.log("✅ Slash commands deployed instantly.");
+    console.log("✅ Slash commands deployed.");
   } catch (err) {
     console.error("❌ Command deployment failed:", err);
   }
 }
 
 // =======================
-// BOT READY
+// BOT READY (clientReady)
 // =======================
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
+
   await registerCommands();
 
   // =======================
-  // RCON CONNECTION
+  // RCON INITIALISATION
   // =======================
-  const { connectRcon, sendRconCommand } = require("./rconClient");
-
   try {
-    await connectRcon();
-    console.log("✅ UDP RCON ready");
+    const { connectRcon, sendRconCommand } = require("./rconClient");
 
-    // =======================
-    // TEST RCON COMMANDS
-    // =======================
-    // This is a one-time test snippet to check RCON connectivity
-    (async () => {
-      try {
-        console.log("📡 Sending test RCON command: playerList");
-        const response = await sendRconCommand("playerList", 15000); // 15s timeout
-        console.log("✅ RCON Response:", response);
-      } catch (err) {
-        console.error("❌ RCON test command failed:", err);
-      }
-    })();
+    await connectRcon();
+    console.log("✅ UDP RCON connected");
+
+    // One-time safe test (non-blocking)
+    sendRconCommand("playerList", 15000)
+      .then(res => console.log("📡 RCON test OK"))
+      .catch(err =>
+        console.warn("⚠️ RCON test failed (non-fatal):", err.message)
+      );
 
   } catch (err) {
     console.error("❌ RCON startup failed:", err);
@@ -139,12 +129,12 @@ client.once("ready", async () => {
 });
 
 // =======================
-// DATABASE
+// DATABASE INIT
 // =======================
 require("./database/db");
 
 // =======================
-// XP HANDLING
+// XP SYSTEM
 // =======================
 const { getUser, addXP, setLevel } = require("./database/xp");
 const { getDiscordByGamertag } = require("./database/gamertags");
@@ -158,14 +148,14 @@ const {
 const nextXP = lvl => 100 + lvl * 50;
 
 function giveXP(userId, amount) {
-  if (!XP) return;
+  if (!XP || !amount) return;
 
   const user = getUser(userId);
-  const newXP = addXP(userId, amount);
+  const totalXP = addXP(userId, amount);
 
-  if (newXP >= nextXP(user.level)) {
-    const lvl = user.level + 1;
-    setLevel(userId, lvl);
+  if (totalXP >= nextXP(user.level)) {
+    const newLevel = user.level + 1;
+    setLevel(userId, newLevel);
 
     const channel = client.channels.cache.get(LEVEL_CHANNEL_ID);
     if (channel) {
@@ -173,7 +163,7 @@ function giveXP(userId, amount) {
         embeds: [
           new EmbedBuilder()
             .setTitle("🎉 Level Up!")
-            .setDescription(`<@${userId}> reached **Level ${lvl}**`)
+            .setDescription(`<@${userId}> reached **Level ${newLevel}**`)
             .setColor(0x1abc9c)
             .setTimestamp()
         ]
@@ -183,7 +173,7 @@ function giveXP(userId, amount) {
 }
 
 // =======================
-// MESSAGE XP
+// MESSAGE XP + KILLFEED
 // =======================
 const messageCooldown = new Set();
 
@@ -192,6 +182,7 @@ client.on("messageCreate", message => {
 
   if (!messageCooldown.has(message.author.id)) {
     if (XP?.MESSAGE) giveXP(message.author.id, XP.MESSAGE);
+
     messageCooldown.add(message.author.id);
     setTimeout(
       () => messageCooldown.delete(message.author.id),
@@ -220,12 +211,13 @@ client.on("interactionCreate", async interaction => {
   try {
     await command.execute(interaction);
   } catch (err) {
-    console.error(err);
-    if (!interaction.replied) {
+    console.error(`❌ Command ${interaction.commandName} failed:`, err);
+
+    if (!interaction.replied && !interaction.deferred) {
       interaction.reply({
         content: "❌ Command execution failed",
         ephemeral: true
-      });
+      }).catch(() => {});
     }
   }
 });
@@ -240,7 +232,8 @@ app.listen(PORT, () =>
 // =======================
 // LOGIN
 // =======================
-const TOKEN = process.env.TOKEN;
-if (!TOKEN) throw new Error("❌ TOKEN not set in Railway");
+if (!process.env.TOKEN) {
+  throw new Error("❌ TOKEN not set in environment");
+}
 
-client.login(TOKEN);
+client.login(process.env.TOKEN);

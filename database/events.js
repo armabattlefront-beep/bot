@@ -2,72 +2,112 @@ const fs = require("fs");
 const path = require("path");
 
 const FILE_PATH = path.join(__dirname, "../data/events.json");
-let events = {};
 
-// Load at startup
+// Internal state (never expose directly)
+let events = Object.create(null);
+
+// =======================
+// SAFE LOAD
+// =======================
 if (fs.existsSync(FILE_PATH)) {
   try {
-    events = JSON.parse(fs.readFileSync(FILE_PATH, "utf-8"));
-  } catch (e) {
-    events = {};
-    console.warn("Failed to load events.json");
+    const raw = fs.readFileSync(FILE_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+
+    if (typeof parsed === "object" && parsed !== null) {
+      events = parsed;
+    }
+  } catch (err) {
+    console.warn("⚠️ Failed to load events.json, starting fresh");
+    events = Object.create(null);
   }
 }
 
-// Save all events
+// =======================
+// SANITISER
+// =======================
+function sanitizeEvent(event) {
+  return {
+    id: String(event.id),
+    name: String(event.name),
+    description: String(event.description),
+    maxPlayers: Number(event.maxPlayers),
+    groupSize: event.groupSize !== null ? Number(event.groupSize) : null,
+    date: String(event.date),
+    time: String(event.time),
+    timestamp: Number(event.timestamp),
+    signups: Array.isArray(event.signups)
+      ? event.signups.map(s => ({
+          id: String(s.id),
+          isStaff: Boolean(s.isStaff)
+        }))
+      : []
+  };
+}
+
+// =======================
+// SAVE ALL (CIRCULAR SAFE)
+// =======================
 function saveAll() {
-  fs.writeFileSync(FILE_PATH, JSON.stringify(events, null, 2));
+  const safe = Object.create(null);
+
+  for (const [id, event] of Object.entries(events)) {
+    safe[id] = sanitizeEvent(event);
+  }
+
+  fs.writeFileSync(FILE_PATH, JSON.stringify(safe, null, 2));
+  events = safe;
 }
 
-// Get single event by ID
+// =======================
+// READ OPERATIONS (CLONED)
+// =======================
 function getEvent(eventId) {
-  return events[eventId] || null;
+  const event = events[eventId];
+  return event ? structuredClone(event) : null;
 }
 
-// Get all events
 function getAllEvents() {
-  return events;
+  return structuredClone(events);
 }
 
-// Save/update a single event
+// =======================
+// WRITE OPERATIONS
+// =======================
 function saveEvent(eventId, eventData) {
-  events[eventId] = eventData;
+  events[eventId] = sanitizeEvent(eventData);
   saveAll();
 }
 
-// Add a signup (supports staff)
+// =======================
+// SIGNUPS
+// =======================
 function addEventSignup(eventId, userId, isStaff = false) {
-  const event = getEvent(eventId);
+  const event = events[eventId];
   if (!event) return false;
 
-  // Ensure signups array exists
   if (!Array.isArray(event.signups)) event.signups = [];
 
-  // Normalize old plain-ID signups
-  event.signups = event.signups.map(s => (typeof s === "string" ? { id: s, isStaff: false } : s));
+  // Normalize legacy formats
+  event.signups = event.signups.map(s =>
+    typeof s === "string"
+      ? { id: s, isStaff: false }
+      : { id: String(s.id), isStaff: Boolean(s.isStaff) }
+  );
 
-  // Check if user is already signed up
   if (event.signups.some(s => s.id === userId)) return false;
 
-  // Add the new signup
-  event.signups.push({ id: userId, isStaff });
-  saveEvent(eventId, event);
+  event.signups.push({ id: String(userId), isStaff: Boolean(isStaff) });
+  saveAll();
   return true;
 }
 
-// Optionally remove a signup
 function removeEventSignup(eventId, userId) {
-  const event = getEvent(eventId);
+  const event = events[eventId];
   if (!event || !Array.isArray(event.signups)) return false;
 
-  // Normalize old plain-ID signups
-  event.signups = event.signups.map(s => (typeof s === "string" ? { id: s, isStaff: false } : s));
-
-  const index = event.signups.findIndex(s => s.id === userId);
-  if (index === -1) return false;
-
-  event.signups.splice(index, 1);
-  saveEvent(eventId, event);
+  event.signups = event.signups.filter(s => s.id !== userId);
+  saveAll();
   return true;
 }
 
