@@ -9,26 +9,37 @@ module.exports = {
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
-      const user = getUser(userId) || { xp: 0, level: 0, prestige: 0 };
 
-      const level = user.level;
-      const xp = user.xp;
-      const nextLevelXP = getNextLevelXP(level);
+      // ----------------------------
+      // Safe getUser
+      // ----------------------------
+      let user;
+      try {
+        user = getUser(userId);
+      } catch (err) {
+        console.error("❌ Failed to get user data:", err);
+        user = { xp: 0, level: 0, prestige: 0 };
+      }
+
+      const level = Number(user.level) || 0;
+      const xp = Number(user.xp) || 0;
+      const nextLevelXP = getNextLevelXP ? getNextLevelXP(level) : 100 + level * 50;
       const progressPercent = Math.floor((xp / nextLevelXP) * 100);
 
       // ----------------------------
-      // Rank display with military flair
+      // Rank display
       // ----------------------------
+      let rankName = getRankName ? getRankName(level) : "Recruit";
+
       const rankEmojis = {
-        0: "🟢",   5: "🔰",  10: "🪖",  20: "🎖️",
-        30: "⭐",  40: "🛡️",  50: "⚔️",  60: "🎖️",
-        70: "🏆"
+        0: "🟢", 5: "🔰", 10: "🪖", 20: "🎖️",
+        30: "⭐", 40: "🛡️", 50: "⚔️", 60: "🎖️", 70: "🏆"
       };
 
       let rankDisplay = "🟢 Recruit";
       const sortedLevels = Object.keys(rankEmojis).map(Number).sort((a,b)=>a-b);
       for (const lvl of sortedLevels) {
-        if (level >= lvl) rankDisplay = `${rankEmojis[lvl]} ${getRankName(level)}`;
+        if (level >= lvl) rankDisplay = `${rankEmojis[lvl]} ${rankName}`;
       }
 
       // ----------------------------
@@ -47,7 +58,7 @@ module.exports = {
       barDisplay += "⬜".repeat(emptyBars);
 
       // ----------------------------
-      // Prestige & elite badges
+      // Prestige and elite badges
       // ----------------------------
       const prestigeDisplay = user.prestige ? "✨".repeat(user.prestige) : "";
       let eliteBadge = "";
@@ -55,12 +66,16 @@ module.exports = {
       if (level >= 70) eliteBadge = "🎖️🏆";
 
       // ----------------------------
-      // Embed with avatar
+      // Safe avatar URL
+      // ----------------------------
+      let avatarURL = interaction.user.displayAvatarURL({ extension: "png", size: 256 }) || null;
+
+      // ----------------------------
+      // Embed
       // ----------------------------
       const embed = new EmbedBuilder()
         .setColor("#00ff99")
         .setTitle(`🎖️ ${interaction.user.username}'s Military ID`)
-        .setThumbnail(interaction.user.displayAvatarURL({ extension: "png", size: 256 })) // avatar on right
         .setDescription(
           `${eliteBadge} ${rankDisplay} ${prestigeDisplay}\n\n` +
           `Level: **${level}** ${eliteBadge}\n` +
@@ -69,11 +84,16 @@ module.exports = {
         )
         .setFooter({ text: "BattleFront Madness Rank System" });
 
+      if (avatarURL) embed.setThumbnail(avatarURL);
+
       await interaction.reply({ embeds: [embed] });
 
     } catch (err) {
-      console.error("❌ Rank command error:", err);
-      await interaction.reply({ content: "❌ Failed to show rank.", ephemeral: true });
+      console.error("❌ Rank command failed:", err);
+      await interaction.reply({
+        content: "❌ Failed to show rank. Check console for errors.",
+        ephemeral: true
+      });
     }
   }
 };
