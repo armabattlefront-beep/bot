@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getUser, getNextLevelXP, getRankName } = require("../database/xp");
+const { getUser, addXP, setLevel } = require("../database/xp"); // only what exists
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,27 +9,23 @@ module.exports = {
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
-
-      // ----------------------------
-      // Safe getUser
-      // ----------------------------
-      let user;
-      try {
-        user = getUser(userId);
-      } catch (err) {
-        console.error("❌ Failed to get user data:", err);
-        user = { xp: 0, level: 0, prestige: 0 };
-      }
+      const user = getUser(userId) || { xp: 0, level: 0, prestige: 0 };
 
       const level = Number(user.level) || 0;
       const xp = Number(user.xp) || 0;
-      const nextLevelXP = getNextLevelXP ? getNextLevelXP(level) : 100 + level * 50;
+      const nextLevelXP = 100 + level * 50; // ✅ calculate directly
       const progressPercent = Math.floor((xp / nextLevelXP) * 100);
 
       // ----------------------------
       // Rank display
       // ----------------------------
-      let rankName = getRankName ? getRankName(level) : "Recruit";
+      const rankNames = [
+        "Recruit", "Private", "Corporal", "Sergeant", "Lieutenant",
+        "Captain", "Major", "Colonel", "General"
+      ];
+
+      // Simple rank calculation
+      let rankName = rankNames[Math.min(Math.floor(level / 5), rankNames.length - 1)];
 
       const rankEmojis = {
         0: "🟢", 5: "🔰", 10: "🪖", 20: "🎖️",
@@ -58,7 +54,7 @@ module.exports = {
       barDisplay += "⬜".repeat(emptyBars);
 
       // ----------------------------
-      // Prestige and elite badges
+      // Prestige & elite badges
       // ----------------------------
       const prestigeDisplay = user.prestige ? "✨".repeat(user.prestige) : "";
       let eliteBadge = "";
@@ -66,16 +62,12 @@ module.exports = {
       if (level >= 70) eliteBadge = "🎖️🏆";
 
       // ----------------------------
-      // Safe avatar URL
-      // ----------------------------
-      let avatarURL = interaction.user.displayAvatarURL({ extension: "png", size: 256 }) || null;
-
-      // ----------------------------
-      // Embed
+      // Embed with avatar
       // ----------------------------
       const embed = new EmbedBuilder()
         .setColor("#00ff99")
         .setTitle(`🎖️ ${interaction.user.username}'s Military ID`)
+        .setThumbnail(interaction.user.displayAvatarURL({ extension: "png", size: 256 }))
         .setDescription(
           `${eliteBadge} ${rankDisplay} ${prestigeDisplay}\n\n` +
           `Level: **${level}** ${eliteBadge}\n` +
@@ -83,8 +75,6 @@ module.exports = {
           `${barDisplay}`
         )
         .setFooter({ text: "BattleFront Madness Rank System" });
-
-      if (avatarURL) embed.setThumbnail(avatarURL);
 
       await interaction.reply({ embeds: [embed] });
 
