@@ -23,7 +23,7 @@ module.exports = {
     )
     .addStringOption(opt =>
       opt.setName("date")
-        .setDescription("Event date (YYYY-MM-DD)")
+        .setDescription("Event date (DD/MM/YYYY)")
         .setRequired(true)
     )
     .addStringOption(opt =>
@@ -41,13 +41,11 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // =======================
+    // ----------------------------
     // PERMISSION CHECK
-    // =======================
+    // ----------------------------
     const memberRoles = interaction.member.roles.cache.map(r => r.id);
-    const allowed = memberRoles.some(r =>
-      eventRoles.allowedRoles.includes(r)
-    );
+    const allowed = memberRoles.some(r => eventRoles.allowedRoles.includes(r));
 
     if (!allowed) {
       return interaction.reply({
@@ -56,25 +54,43 @@ module.exports = {
       });
     }
 
-    // =======================
+    // ----------------------------
     // INPUT COLLECTION
-    // =======================
+    // ----------------------------
     const name = interaction.options.getString("name").trim();
     const description = interaction.options.getString("description").trim();
     const maxPlayers = interaction.options.getInteger("maxplayers");
-    const date = interaction.options.getString("date");
-    const time = interaction.options.getString("time");
+    const dateInput = interaction.options.getString("date").trim();  // British format DD/MM/YYYY
+    const timeInput = interaction.options.getString("time").trim();  // HH:MM
     const groupSize = interaction.options.getInteger("groupsize") ?? null;
     const voiceChannelId = interaction.options.getString("voicechannel");
 
-    // =======================
-    // DATE VALIDATION (CRITICAL)
-    // =======================
-    const startTime = new Date(`${date}T${time}:00`);
+    // ----------------------------
+    // PARSE BRITISH DATE
+    // ----------------------------
+    const dateParts = dateInput.split("/");
+    if (dateParts.length !== 3) {
+      return interaction.reply({
+        content: "❌ Invalid date format. Use DD/MM/YYYY.",
+        ephemeral: true
+      });
+    }
+
+    const [day, month, year] = dateParts.map(Number);
+    const [hour, minute] = timeInput.split(":").map(Number);
+
+    if (!day || !month || !year || !hour && hour !== 0 || !minute && minute !== 0) {
+      return interaction.reply({
+        content: "❌ Invalid date or time. Use DD/MM/YYYY and HH:MM (24h).",
+        ephemeral: true
+      });
+    }
+
+    const startTime = new Date(year, month - 1, day, hour, minute);
 
     if (isNaN(startTime.getTime())) {
       return interaction.reply({
-        content: "❌ Invalid date or time format. Use YYYY-MM-DD and HH:MM (24h).",
+        content: "❌ Could not parse the date and time.",
         ephemeral: true
       });
     }
@@ -86,9 +102,9 @@ module.exports = {
       });
     }
 
-    // =======================
+    // ----------------------------
     // EVENT ID + DUPLICATE CHECK
-    // =======================
+    // ----------------------------
     const eventId = name.toLowerCase().replace(/[^a-z0-9]/gi, "_");
     const allEvents = getAllEvents();
 
@@ -99,52 +115,51 @@ module.exports = {
       });
     }
 
-    // =======================
-    // SAVE TO DATABASE (SAFE DATA ONLY)
-    // =======================
+    // ----------------------------
+    // SAVE TO DATABASE
+    // ----------------------------
     saveEvent(eventId, {
       id: eventId,
       name,
       description,
       maxPlayers,
       groupSize,
-      date,
-      time,
+      date: dateInput,
+      time: timeInput,
       timestamp: startTime.getTime(),
       signups: []
     });
 
-    // =======================
+    // ----------------------------
     // CONFIRMATION EMBED
-    // =======================
+    // ----------------------------
     const embed = new EmbedBuilder()
       .setTitle(`🆕 Event Created: ${name}`)
       .setDescription(description)
       .addFields(
         { name: "Max Players", value: `${maxPlayers}`, inline: true },
         { name: "Group Size", value: groupSize ? `${groupSize}` : "N/A", inline: true },
-        { name: "Date", value: date, inline: true },
-        { name: "Time", value: time, inline: true }
+        { name: "Date", value: dateInput, inline: true },
+        { name: "Time", value: timeInput, inline: true }
       )
       .setColor(0x00ff00)
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
 
-    // =======================
+    // ----------------------------
     // DISCORD SCHEDULED EVENT
-    // =======================
+    // ----------------------------
     if (voiceChannelId) {
       try {
-        const discordEvent =
-          await interaction.guild.scheduledEvents.create({
-            name,
-            description: `${description}\n\nMax Players: ${maxPlayers}`,
-            scheduledStartTime: startTime,
-            privacyLevel: 2, // GUILD_ONLY
-            entityType: 2,   // VOICE
-            channel: voiceChannelId
-          });
+        const discordEvent = await interaction.guild.scheduledEvents.create({
+          name,
+          description: `${description}\n\nMax Players: ${maxPlayers}`,
+          scheduledStartTime: startTime,
+          privacyLevel: 2, // GUILD_ONLY
+          entityType: 2,   // VOICE
+          channel: voiceChannelId
+        });
 
         await interaction.followUp({
           content: `✅ Discord Scheduled Event created: **${discordEvent.name}**`,
