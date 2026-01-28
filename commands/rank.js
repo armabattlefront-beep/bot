@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const Canvas = require("@napi-rs/canvas");
 const path = require("path");
-const { getUser } = require("../xp"); // ✅ Correct import
+const { getUser, getNextLevelXP, getRankName } = require("../xp"); // ✅ Correct imports
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,7 +18,7 @@ module.exports = {
 
       const xp = Number(user.xp) || 0;
       const level = Number(user.level) || 0;
-      const nextLevelXP = (level + 1) * 1000;
+      const nextLevelXP = getNextLevelXP(level); // use xp.js function
       const progress = Math.min(xp / nextLevelXP, 1);
 
       // ----------------------------
@@ -33,7 +33,7 @@ module.exports = {
       ctx.fillStyle = "#0b1c26";
       ctx.fillRect(0, 0, width, height);
 
-      // Officer gold frame
+      // Officer gold frame for higher levels
       if (level >= 30) {
         ctx.strokeStyle = "#FFD700";
         ctx.lineWidth = 8;
@@ -63,15 +63,15 @@ module.exports = {
       ctx.fillText(`XP: ${xp} / ${nextLevelXP}`, 260, 135);
 
       // Rank name + insignia
-      let rankName = "Recruit";
-      let insigniaPath = "recruit.png";
-
-      if (level >= 5) rankName = "Private";
-      if (level >= 10) rankName = "Corporal";
-      if (level >= 20) rankName = "Sergeant";
-      if (level >= 30) rankName = "Lieutenant";
-      if (level >= 40) rankName = "Captain";
-      if (level >= 50) rankName = "Major";
+      const rankName = getRankName(level);
+      let insigniaPath = "recruit.png"; // default
+      // Map levels to insignia images
+      if (level >= 5) insigniaPath = "private.png";
+      if (level >= 10) insigniaPath = "corporal.png";
+      if (level >= 20) insigniaPath = "sergeant.png";
+      if (level >= 30) insigniaPath = "lieutenant.png";
+      if (level >= 40) insigniaPath = "captain.png";
+      if (level >= 50) insigniaPath = "major.png";
 
       ctx.fillStyle = "#ffd700";
       ctx.font = "bold 26px Arial";
