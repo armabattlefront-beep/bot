@@ -7,40 +7,51 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("deleteevent")
     .setDescription("Delete an existing event and all its signups")
-    .addStringOption(opt => {
-      const allEvents = getAllEvents();
-      const choices = Object.values(allEvents).map(e => ({
-        name: `${e.name} (${e.id})`,
-        value: e.id
-      }));
-
-      return opt
-        .setName("event")
+    .addStringOption(opt =>
+      opt.setName("event")
         .setDescription("Select the event to delete")
         .setRequired(true)
-        .addChoices(...choices);
-    }),
+        .setAutocomplete(true)
+    ),
+
+  // ----------------------------
+  // AUTOCOMPLETE FOR EVENTS
+  // ----------------------------
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused();
+    const events = Object.values(getAllEvents());
+    const filtered = events
+      .map(ev => ev.name)
+      .filter(name => name.toLowerCase().includes(focused.toLowerCase()));
+    
+    await interaction.respond(
+      filtered.slice(0, 25).map(name => ({ name, value: name })) // max 25
+    );
+  },
 
   async execute(interaction) {
     if (!isStaff(interaction.member)) {
       return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
     }
 
-    const eventId = interaction.options.getString("event");
+    const eventName = interaction.options.getString("event");
+    const eventId = eventName.toLowerCase().replace(/\s+/g, "_");
     const allEvents = getAllEvents();
 
     if (!allEvents[eventId]) {
-      return interaction.reply({ content: `❌ Event "${eventId}" not found.`, ephemeral: true });
+      return interaction.reply({ content: `❌ Event "${eventName}" not found.`, ephemeral: true });
     }
 
     // Delete event
     delete allEvents[eventId];
-    saveEvent(null, allEvents); // Save entire updated events object
+    saveEvent(null, allEvents); // Save the updated events object
 
-    interaction.reply({ content: `✅ Event "${eventId}" and all its signups have been deleted.` });
+    await interaction.reply({ content: `✅ Event "${eventName}" and all its signups have been deleted.` });
 
     // Log to mod channel
     const logCh = interaction.client.channels.cache.get(MOD_LOG_CHANNEL);
-    if (logCh) logCh.send(`🗑️ Event "${eventId}" deleted by ${interaction.user.tag}`);
+    if (logCh) {
+      logCh.send(`🗑️ Event "${eventName}" deleted by ${interaction.user.tag}`);
+    }
   }
 };
