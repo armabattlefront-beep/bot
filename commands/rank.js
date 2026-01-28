@@ -1,7 +1,17 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const Canvas = require("@napi-rs/canvas");
 const path = require("path");
-const { getUser, getNextLevelXP, getRankName } = require("../xp"); // ✅ Correct imports
+
+// ✅ Correct import for your database xp.js
+const xpModulePath = "../database/xp";
+let getUser, getNextLevelXP, getRankName;
+
+try {
+  ({ getUser, getNextLevelXP, getRankName } = require(xpModulePath));
+  if (typeof getUser !== "function") throw new Error("getUser not found in xp module");
+} catch (err) {
+  console.error(`❌ Failed to load xp module from ${xpModulePath}:`, err);
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,6 +20,10 @@ module.exports = {
 
   async execute(interaction) {
     try {
+      if (typeof getUser !== "function") {
+        return interaction.reply({ content: "Rank system unavailable.", ephemeral: true });
+      }
+
       // ----------------------------
       // Fetch user data
       // ----------------------------
@@ -65,7 +79,6 @@ module.exports = {
       // Rank name + insignia
       const rankName = getRankName(level);
       let insigniaPath = "recruit.png"; // default
-      // Map levels to insignia images
       if (level >= 5) insigniaPath = "private.png";
       if (level >= 10) insigniaPath = "corporal.png";
       if (level >= 20) insigniaPath = "sergeant.png";
@@ -77,18 +90,26 @@ module.exports = {
       ctx.font = "bold 26px Arial";
       ctx.fillText(`Rank: ${rankName}`, 260, 170);
 
-      // Load insignia
-      const insignia = await Canvas.loadImage(
-        path.join(__dirname, "..", "assets", "insignia", insigniaPath)
-      );
-      ctx.drawImage(insignia, 200, 150, 40, 40);
+      // Load insignia safely
+      try {
+        const insignia = await Canvas.loadImage(
+          path.join(__dirname, "..", "assets", "insignia", insigniaPath)
+        );
+        ctx.drawImage(insignia, 200, 150, 40, 40);
+      } catch (err) {
+        console.warn("⚠️ Could not load insignia image:", insigniaPath);
+      }
 
       // Prestige badge if any
       if (user.prestige && user.prestige > 0) {
-        const prestige = await Canvas.loadImage(
-          path.join(__dirname, "..", "assets", "prestige", `prestige${user.prestige}.png`)
-        );
-        ctx.drawImage(prestige, 700, 30, 60, 60);
+        try {
+          const prestige = await Canvas.loadImage(
+            path.join(__dirname, "..", "assets", "prestige", `prestige${user.prestige}.png`)
+          );
+          ctx.drawImage(prestige, 700, 30, 60, 60);
+        } catch (err) {
+          console.warn("⚠️ Could not load prestige image:", `prestige${user.prestige}.png`);
+        }
       }
 
       // User avatar
