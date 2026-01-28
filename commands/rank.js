@@ -1,101 +1,93 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
-const { loadLevels, getRankName, getNextLevelXP } = require("../xp");
 const Canvas = require("@napi-rs/canvas");
+const { getUser } = require("../xp"); // 🔥 USE DATABASE XP
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("rank")
-    .setDescription("Show your current rank, level, and XP as a BattleFront-style card"),
+    .setDescription("Show your current rank, level, and XP"),
 
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
-      const levels = loadLevels();
-      const userData = levels[userId] || { xp: 0, level: 0 };
+      const user = getUser(userId);
 
-      const currentXP = userData.xp;
-      const nextLevelXP = getNextLevelXP(userData.level);
-      const progress = Math.min(currentXP / nextLevelXP, 1);
+      const xp = Number(user.xp) || 0;
+      const level = Number(user.level) || 0;
+
+      const nextLevelXP = (level + 1) * 1000;
+      const progress = Math.min(xp / nextLevelXP, 1);
 
       const width = 800;
       const height = 250;
       const canvas = Canvas.createCanvas(width, height);
       const ctx = canvas.getContext("2d");
 
-      // ===== BACKGROUND =====
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, "#0f2027");
-      gradient.addColorStop(0.5, "#203a43");
-      gradient.addColorStop(1, "#2c5364");
-      ctx.fillStyle = gradient;
+      // Background
+      ctx.fillStyle = "#0b1c26";
       ctx.fillRect(0, 0, width, height);
 
-      // ===== PROGRESS BAR =====
-      ctx.fillStyle = "#222";
-      ctx.fillRect(0, height - 45, width, 30);
+      // Progress bar background
+      ctx.fillStyle = "#1f2933";
+      ctx.fillRect(40, 190, 720, 24);
 
-      ctx.fillStyle = "#00ff00";
-      ctx.fillRect(0, height - 45, width * progress, 30);
+      // Progress bar fill
+      ctx.fillStyle = "#00ff99";
+      ctx.fillRect(40, 190, 720 * progress, 24);
 
-      // ===== BORDER =====
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 4;
+      // Border
+      ctx.strokeStyle = "#00ff99";
+      ctx.lineWidth = 3;
       ctx.strokeRect(0, 0, width, height);
 
-      // ===== TEXT SETTINGS (SAFE) =====
+      // Text (FORCE SAFE FONT)
       ctx.fillStyle = "#ffffff";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
+      ctx.font = "bold 32px Arial";
 
       // Username
-      ctx.font = "bold 36px Arial";
-      ctx.fillText(interaction.user.username, 220, 30);
+      ctx.fillText(interaction.user.username, 260, 60);
 
-      // Rank
+      ctx.font = "24px Arial";
+      ctx.fillText(`Level: ${level}`, 260, 100);
+      ctx.fillText(`XP: ${xp} / ${nextLevelXP}`, 260, 135);
+
+      // Rank name
+      let rankName = "Recruit";
+      if (level >= 5) rankName = "Private";
+      if (level >= 10) rankName = "Corporal";
+      if (level >= 20) rankName = "Sergeant";
+      if (level >= 30) rankName = "Lieutenant";
+      if (level >= 40) rankName = "Captain";
+      if (level >= 50) rankName = "Major";
+
+      ctx.fillStyle = "#ffd700";
       ctx.font = "bold 26px Arial";
-      ctx.fillText(`Rank: ${getRankName(userData.level)}`, 220, 80);
+      ctx.fillText(`Rank: ${rankName}`, 260, 170);
 
-      // Level
-      ctx.fillText(`Level: ${userData.level}`, 220, 115);
-
-      // XP
-      ctx.fillText(`XP: ${currentXP} / ${nextLevelXP}`, 220, 150);
-
-      // ===== AVATAR =====
+      // Avatar
       const avatar = await Canvas.loadImage(
         interaction.user.displayAvatarURL({ extension: "png", size: 256 })
       );
 
       ctx.save();
       ctx.beginPath();
-      ctx.arc(110, 125, 90, 0, Math.PI * 2);
+      ctx.arc(140, 125, 90, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
-      ctx.drawImage(avatar, 20, 35, 180, 180);
+      ctx.drawImage(avatar, 50, 35, 180, 180);
       ctx.restore();
 
-      // ===== NEXT RANK =====
-      let nextRank = "Top Rank!";
-      if (userData.level < 15) nextRank = "Sergeant";
-      else if (userData.level < 30) nextRank = "Commander";
-      else if (userData.level < 50) nextRank = "General";
-
-      ctx.fillStyle = "#ffd700";
-      ctx.font = "bold 24px Arial";
-      ctx.fillText(`Next Rank: ${nextRank}`, 520, 40);
-
-      // ===== SEND =====
       const attachment = new AttachmentBuilder(
         await canvas.encode("png"),
-        { name: "rank_card.png" }
+        { name: "rank.png" }
       );
 
       await interaction.reply({ files: [attachment] });
 
     } catch (err) {
-      console.error("❌ Error generating rank card:", err);
+      console.error("❌ Rank card error:", err);
       await interaction.reply({
-        content: "❌ Failed to generate rank card",
+        content: "❌ Failed to generate rank card.",
         ephemeral: true
       });
     }
