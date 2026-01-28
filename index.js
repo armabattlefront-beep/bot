@@ -200,22 +200,76 @@ client.on("messageCreate", message => {
 });
 
 // =======================
-// SLASH COMMAND HANDLER
+// INTERACTION HANDLER
 // =======================
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
+client.on("interactionCreate", async (interaction) => {
   try {
-    await command.execute(interaction);
+    // ----------------------------
+    // Slash commands
+    // ----------------------------
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+
+      await command.execute(interaction);
+    }
+
+    // ----------------------------
+    // Select menu interactions (for /viewevent)
+    // ----------------------------
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "view_event_select") {
+        const { getEvent } = require("./database/events");
+        const eventId = interaction.values[0];
+        const event = getEvent(eventId);
+
+        if (!event) {
+          return interaction.update({
+            content: "❌ Event not found.",
+            components: []
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🗂️ Event: ${event.name}`)
+          .setDescription(event.description || "No description provided.")
+          .addFields(
+            { name: "Max Players", value: `${event.maxPlayers}`, inline: true },
+            { name: "Group Size", value: event.groupSize ? `${event.groupSize}` : "N/A", inline: true },
+            { name: "Current Participants", value: event.signups.length.toString(), inline: true },
+            { name: "Date", value: event.date || "N/A", inline: true },
+            { name: "Time", value: event.time || "N/A", inline: true }
+          )
+          .setColor(0x1abc9c)
+          .setTimestamp();
+
+        // Group participants by squad
+        if (event.signups.length > 0) {
+          const grouped = {};
+          for (const p of event.signups) {
+            const group = p.group || "Unassigned";
+            if (!grouped[group]) grouped[group] = [];
+            grouped[group].push(`<@${p.id}>`);
+          }
+
+          for (const [group, members] of Object.entries(grouped)) {
+            embed.addFields({
+              name: `Squad ${group}`,
+              value: members.join("\n"),
+              inline: true
+            });
+          }
+        }
+
+        await interaction.update({ embeds: [embed], components: [] });
+      }
+    }
   } catch (err) {
-    console.error(`❌ Command ${interaction.commandName} failed:`, err);
+    console.error("❌ Interaction handler error:", err);
 
     if (!interaction.replied && !interaction.deferred) {
       interaction.reply({
-        content: "❌ Command execution failed",
+        content: "❌ Something went wrong handling this interaction.",
         ephemeral: true
       }).catch(() => {});
     }
