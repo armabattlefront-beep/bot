@@ -72,12 +72,12 @@ module.exports = {
       let rankName = "Recruit";
       let insigniaPath = "recruit.png";
 
-      if (level >= 5) { rankName = "Private"; insigniaPath = "private.png"; }
-      if (level >= 10) { rankName = "Corporal"; insigniaPath = "corporal.png"; }
+      if (level >= 5) { rankName = "Private"; insigniaPath = "sergeant.png"; }
+      if (level >= 10) { rankName = "Corporal"; insigniaPath = "sergeant.png"; }
       if (level >= 20) { rankName = "Sergeant"; insigniaPath = "sergeant.png"; }
-      if (level >= 30) { rankName = "Lieutenant"; insigniaPath = "lieutenant.png"; }
-      if (level >= 40) { rankName = "Captain"; insigniaPath = "captain.png"; }
-      if (level >= 50) { rankName = "Major"; insigniaPath = "major.png"; }
+      if (level >= 30) { rankName = "Lieutenant"; insigniaPath = "sergeant.png"; }
+      if (level >= 40) { rankName = "Captain"; insigniaPath = "sergeant.png"; }
+      if (level >= 50) { rankName = "Major"; insigniaPath = "sergeant.png"; }
 
       ctx.fillStyle = "#ffd700";
       ctx.font = "bold 26px Arial";
