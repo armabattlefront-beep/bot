@@ -4,49 +4,66 @@ const { getUser, getNextLevelXP, getRankName } = require("../database/xp");
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("rank")
-    .setDescription("Show your current rank, level, and XP"),
+    .setDescription("Show your military-themed rank card with avatar"),
 
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
-      const user = getUser(userId) || { xp: 0, level: 0 };
+      const user = getUser(userId) || { xp: 0, level: 0, prestige: 0 };
 
-      const level = user.level || 0;
-      const xp = user.xp || 0;
+      const level = user.level;
+      const xp = user.xp;
       const nextLevelXP = getNextLevelXP(level);
       const progressPercent = Math.floor((xp / nextLevelXP) * 100);
 
-      // Military-themed rank emojis
-      const rankEmojiMap = {
-        0: "🟢 Recruit",
-        5: "🔰 Private",
-        10: "🪖 Corporal",
-        20: "🎖️ Sergeant",
-        30: "⭐ Lieutenant",
-        40: "🛡️ Captain",
-        50: "⚔️ Major",
-        60: "🎖️ Colonel",
-        70: "🏆 General"
+      // ----------------------------
+      // Rank display with military flair
+      // ----------------------------
+      const rankEmojis = {
+        0: "🟢",   5: "🔰",  10: "🪖",  20: "🎖️",
+        30: "⭐",  40: "🛡️",  50: "⚔️",  60: "🎖️",
+        70: "🏆"
       };
 
-      // Find closest rank emoji
       let rankDisplay = "🟢 Recruit";
-      for (const lvl of Object.keys(rankEmojiMap).map(Number).sort((a,b)=>a-b)) {
-        if (level >= lvl) rankDisplay = rankEmojiMap[lvl];
+      const sortedLevels = Object.keys(rankEmojis).map(Number).sort((a,b)=>a-b);
+      for (const lvl of sortedLevels) {
+        if (level >= lvl) rankDisplay = `${rankEmojis[lvl]} ${getRankName(level)}`;
       }
 
-      // Progress bar using emojis
-      const totalBars = 10;
+      // ----------------------------
+      // Progress bar
+      // ----------------------------
+      const totalBars = 15;
       const filledBars = Math.floor((xp / nextLevelXP) * totalBars);
       const emptyBars = totalBars - filledBars;
-      const barDisplay = "🟩".repeat(filledBars) + "⬜".repeat(emptyBars);
 
+      let barDisplay = "";
+      for (let i = 0; i < filledBars; i++) {
+        if (i < filledBars * 0.3) barDisplay += "🟩";
+        else if (i < filledBars * 0.6) barDisplay += "🟨";
+        else barDisplay += "🟧";
+      }
+      barDisplay += "⬜".repeat(emptyBars);
+
+      // ----------------------------
+      // Prestige & elite badges
+      // ----------------------------
+      const prestigeDisplay = user.prestige ? "✨".repeat(user.prestige) : "";
+      let eliteBadge = "";
+      if (level >= 50) eliteBadge = "🏅";
+      if (level >= 70) eliteBadge = "🎖️🏆";
+
+      // ----------------------------
+      // Embed with avatar
+      // ----------------------------
       const embed = new EmbedBuilder()
         .setColor("#00ff99")
-        .setTitle(`🎖️ ${interaction.user.username}'s Military Rank`)
+        .setTitle(`🎖️ ${interaction.user.username}'s Military ID`)
+        .setThumbnail(interaction.user.displayAvatarURL({ extension: "png", size: 256 })) // avatar on right
         .setDescription(
-          `${rankDisplay}\n\n` +
-          `Level: **${level}**\n` +
+          `${eliteBadge} ${rankDisplay} ${prestigeDisplay}\n\n` +
+          `Level: **${level}** ${eliteBadge}\n` +
           `XP: **${xp} / ${nextLevelXP}** (${progressPercent}%)\n\n` +
           `${barDisplay}`
         )
