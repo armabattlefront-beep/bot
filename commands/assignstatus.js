@@ -1,44 +1,35 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder
+} = require("discord.js");
+const { getEvent, saveEvent, getAllEvents } = require("../database/events");
 const { isStaff } = require("../utils/permissions");
-const { assignStatus, getEventApplications } = require("../database/apps");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("assignstatus")
-    .setDescription("Assign first team or substitute status to a participant")
-    .addStringOption(opt =>
-      opt.setName("event")
-        .setDescription("Select the event")
-        .setRequired(true)
-    )
-    .addUserOption(opt =>
-      opt.setName("user")
-        .setDescription("Select the user to assign")
-        .setRequired(true)
-    )
-    .addStringOption(opt =>
-      opt.setName("status")
-        .setDescription("First team or substitute")
-        .setRequired(true)
-        .addChoices(
-          { name: "First Team", value: "firstTeam" },
-          { name: "Substitute", value: "sub" }
-        )
-    ),
+    .setDescription("Assign player status for an event"),
 
   async execute(interaction) {
-    if (!isStaff(interaction.member)) 
+    if (!isStaff(interaction.member))
       return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
 
-    const eventId = interaction.options.getString("event");
-    const userId = interaction.options.getUser("user").id;
-    const status = interaction.options.getString("status");
+    const events = Object.values(getAllEvents()).slice(0, 25);
 
-    const success = assignStatus(eventId, userId, status);
-    if (!success) {
-      return interaction.reply({ content: "❌ Failed to assign status. Check user/event.", ephemeral: true });
-    }
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("assignstatus_event")
+      .setPlaceholder("Select event")
+      .addOptions(events.map(ev => ({
+        label: ev.name,
+        value: ev.id
+      })));
 
-    interaction.reply({ content: `✅ Assigned ${status} to <@${userId}> for **${eventId}**.` });
+    interaction.reply({
+      content: "Select an event:",
+      components: [new ActionRowBuilder().addComponents(menu)],
+      ephemeral: true
+    });
   }
 };

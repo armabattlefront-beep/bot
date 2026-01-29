@@ -1,54 +1,38 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { signupEvent, getAllEvents, getEvent } = require("../database/events");
+const { SlashCommandBuilder } = require("discord.js");
+const { getEvent, saveEvent } = require("../database/events");
+const { isStaff } = require("../utils/permissions");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("eventapp")
-    .setDescription("Sign up for a BattleFront event")
-    .addStringOption(opt =>
-      opt.setName("event")
-         .setDescription("Select the event to join")
-         .setRequired(true)
-         .setAutocomplete(true) // enable autocomplete
-    ),
-
-  async autocomplete(interaction) {
-    const focused = interaction.options.getFocused();
-    const events = getAllEvents();
-    const choices = events.map(ev => ev.name);
-    const filtered = choices.filter(ev => ev.toLowerCase().includes(focused.toLowerCase()));
-    await interaction.respond(filtered.map(name => ({ name, value: name })));
-  },
+    .setName("assigngroup")
+    .setDescription("Assign squad or squad leader")
+    .addStringOption(o =>
+      o.setName("event").setDescription("Event ID").setRequired(true))
+    .addUserOption(o =>
+      o.setName("user").setDescription("User").setRequired(true))
+    .addStringOption(o =>
+      o.setName("group").setDescription("Squad name").setRequired(true))
+    .addBooleanOption(o =>
+      o.setName("leader").setDescription("Set as squad leader")),
 
   async execute(interaction) {
-    const userId = interaction.user.id;
-    const eventName = interaction.options.getString("event");
+    if (!isStaff(interaction.member))
+      return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
 
-    const event = getEvent(eventName.toLowerCase().replace(/\s+/g, "_"));
-    if (!event) return interaction.reply({ content: `❌ Event "${eventName}" not found.`, ephemeral: true });
+    const event = getEvent(interaction.options.getString("event"));
+    const userId = interaction.options.getUser("user").id;
+    const group = interaction.options.getString("group");
+    const leader = interaction.options.getBoolean("leader");
 
-    // Check if full
-    if (event.participants.length >= event.maxPlayers) {
-      return interaction.reply({ content: `⚠️ Event full. You're on the waiting list.`, ephemeral: true });
-    }
+    const user = event.signups.find(u => u.id === userId);
+    if (!user)
+      return interaction.reply({ content: "❌ User not in event.", ephemeral: true });
 
-    // Sign up
-    signupEvent(eventName.toLowerCase().replace(/\s+/g, "_"), userId);
+    user.group = group;
+    if (leader !== null) user.squadLeader = leader;
 
-    interaction.reply({
-      content: `✅ You have signed up for **${event.name}**!\nRemaining spots: ${event.maxPlayers - event.participants.length}`
-    });
+    saveEvent(event.id, event);
 
-    // Optionally notify mod channel if set
-    const modChannel = interaction.client.channels.cache.get(event.modChannel || "");
-    if (modChannel) {
-      const embed = new EmbedBuilder()
-        .setTitle("📝 Event Signup")
-        .setDescription(`<@${userId}> signed up for **${event.name}**`)
-        .addFields({ name: "Remaining Spots", value: `${event.maxPlayers - event.participants.length}`, inline: true })
-        .setColor(0x1abc9c)
-        .setTimestamp();
-      modChannel.send({ embeds: [embed] });
-    }
+    interaction.reply(`✅ <@${userId}> assigned to **${group}** ${leader ? "⭐ Squad Leader" : ""}`);
   }
 };

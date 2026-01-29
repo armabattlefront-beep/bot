@@ -1,30 +1,36 @@
 const fs = require("fs");
 const path = require("path");
 
-const FILE_PATH = path.join(__dirname, "../data/events.json");
+const DATA_DIR = path.join(__dirname, "../data");
+const FILE_PATH = path.join(DATA_DIR, "events.json");
+const BACKUP_DIR = path.join(DATA_DIR, "event_backups");
+
+// Ensure directories exist
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 // Internal state (never expose directly)
 let events = Object.create(null);
 
 // =======================
-// SAFE LOAD
+// SAFE LOAD (NON-DESTRUCTIVE)
 // =======================
 if (fs.existsSync(FILE_PATH)) {
   try {
-    const raw = fs.readFileSync(FILE_PATH, "utf-8");
+    const raw = fs.readFileSync(FILE_PATH, "utf8");
     const parsed = JSON.parse(raw);
 
-    if (typeof parsed === "object" && parsed !== null) {
+    if (parsed && typeof parsed === "object") {
       events = parsed;
     }
   } catch (err) {
-    console.warn("⚠️ Failed to load events.json, starting fresh");
+    console.warn("⚠️ Failed to load events.json — keeping in-memory data");
     events = Object.create(null);
   }
 }
 
 // =======================
-// SANITISER
+// SANITISER (LEGACY SAFE)
 // =======================
 function sanitizeEvent(event) {
   return {
@@ -32,25 +38,46 @@ function sanitizeEvent(event) {
     name: String(event.name),
     description: String(event.description),
     maxPlayers: Number(event.maxPlayers),
-    groupSize: event.groupSize !== null ? Number(event.groupSize) : null,
+    groupSize:
+      event.groupSize === null || event.groupSize === undefined
+        ? null
+        : Number(event.groupSize),
     date: String(event.date),
     time: String(event.time),
     timestamp: Number(event.timestamp),
     signups: Array.isArray(event.signups)
-      ? event.signups.map(s => ({
-          id: String(s.id),
-          isStaff: Boolean(s.isStaff)
-        }))
+      ? event.signups.map(s =>
+          typeof s === "string"
+            ? { id: String(s), isStaff: false }
+            : { id: String(s.id), isStaff: Boolean(s.isStaff) }
+        )
       : []
   };
 }
 
 // =======================
-// SAVE ALL (CIRCULAR SAFE)
+// BACKUP HANDLER
+// =======================
+function createBackup() {
+  if (!fs.existsSync(FILE_PATH)) return;
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = path.join(BACKUP_DIR, `events-${stamp}.json`);
+
+  try {
+    fs.copyFileSync(FILE_PATH, backupPath);
+  } catch (err) {
+    console.warn("⚠️ Failed to create event backup:", err.message);
+  }
+}
+
+// =======================
+// SAVE ALL (WITH BACKUP)
 // =======================
 function saveAll() {
-  const safe = Object.create(null);
+  createBackup();
 
+  const safe = Object.create(null);
   for (const [id, event] of Object.entries(events)) {
     safe[id] = sanitizeEvent(event);
   }
@@ -88,16 +115,19 @@ function addEventSignup(eventId, userId, isStaff = false) {
 
   if (!Array.isArray(event.signups)) event.signups = [];
 
-  // Normalize legacy formats
   event.signups = event.signups.map(s =>
     typeof s === "string"
-      ? { id: s, isStaff: false }
+      ? { id: String(s), isStaff: false }
       : { id: String(s.id), isStaff: Boolean(s.isStaff) }
   );
 
-  if (event.signups.some(s => s.id === userId)) return false;
+  if (event.signups.some(s => s.id === String(userId))) return false;
 
-  event.signups.push({ id: String(userId), isStaff: Boolean(isStaff) });
+  event.signups.push({
+    id: String(userId),
+    isStaff: Boolean(isStaff)
+  });
+
   saveAll();
   return true;
 }
@@ -106,11 +136,14 @@ function removeEventSignup(eventId, userId) {
   const event = events[eventId];
   if (!event || !Array.isArray(event.signups)) return false;
 
-  event.signups = event.signups.filter(s => s.id !== userId);
+  event.signups = event.signups.filter(s => s.id !== String(userId));
   saveAll();
   return true;
 }
 
+// =======================
+// EXPORTS
+// =======================
 module.exports = {
   getEvent,
   getAllEvents,
