@@ -1,47 +1,33 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getEvent, saveEvent } = require("../database/events");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { getAllEvents, getEvent, saveEvent } = require("../database/events");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("eventapp")
-    .setDescription("Apply for a BattleFront event")
-    .addStringOption(opt =>
-      opt.setName("event")
-        .setDescription("Select the event")
-        .setRequired(true)
-    ),
+    .setDescription("Apply for a BattleFront event"),
 
   async execute(interaction) {
-    const userId = interaction.user.id;
-    const eventId = interaction.options.getString("event");
-    const event = getEvent(eventId);
+    const events = getAllEvents(); // Get all events for dropdown
+    if (!events || events.length === 0) {
+      return interaction.reply({ content: "❌ There are currently no open events.", ephemeral: true });
+    }
 
-    if (!event)
-      return interaction.reply({ content: "❌ Event not found.", ephemeral: true });
+    const options = events.map(ev => ({
+      label: ev.name,
+      description: ev.description?.slice(0, 100) || "No description",
+      value: ev.id.toString()
+    }));
 
-    if (!event.signups) event.signups = [];
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId("apply_event_select")
+      .setPlaceholder("Select an event to apply for")
+      .addOptions(options);
 
-    if (event.signups.find(u => u.id === userId))
-      return interaction.reply({ content: "⚠️ You already applied.", ephemeral: true });
+    const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    const firstTeamCount = event.signups.filter(u => u.status === "firstTeam").length;
-    const subCount = event.signups.filter(u => u.status === "sub").length;
-
-    let status = "wait";
-    if (firstTeamCount < event.maxPlayers) status = "firstTeam";
-    else if (subCount < event.maxPlayers) status = "sub";
-
-    event.signups.push({
-      id: userId,
-      status,
-      group: null,
-      squadLeader: false
-    });
-
-    saveEvent(eventId, event);
-
-    interaction.reply({
-      content: `✅ Applied to **${event.name}**\n📌 Status: **${status.toUpperCase()}**`,
+    await interaction.reply({
+      content: "Please select an event to apply for:",
+      components: [row],
       ephemeral: true
     });
   }

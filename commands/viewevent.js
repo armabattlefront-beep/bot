@@ -1,9 +1,5 @@
-const {
-  SlashCommandBuilder,
-  EmbedBuilder
-} = require("discord.js");
-const { getAllEvents } = require("../database/events");
-const { buildEventMenu } = require("../utils/paginatedMenu");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require("discord.js");
+const { getAllEvents, getEvent } = require("../database/events");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,8 +7,7 @@ module.exports = {
     .setDescription("Select an event to view its details"),
 
   async execute(interaction) {
-    const events = Object.values(getAllEvents())
-      .filter(ev => ev.timestamp > Date.now());
+    const events = Object.values(getAllEvents()).filter(ev => ev.timestamp > Date.now());
 
     if (!events.length) {
       return interaction.reply({
@@ -21,11 +16,23 @@ module.exports = {
       });
     }
 
-    const { rows } = buildEventMenu(events, 0, "view_event");
+    // Build dropdown options
+    const options = events.map(ev => ({
+      label: ev.name,
+      description: ev.description?.slice(0, 100) || "No description",
+      value: ev.id.toString()
+    }));
+
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId("view_event_select")
+      .setPlaceholder("Select an event to view details")
+      .addOptions(options);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
       content: "🗂️ Select an event to view:",
-      components: rows,
+      components: [row],
       ephemeral: true
     });
   }
