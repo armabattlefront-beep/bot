@@ -11,7 +11,7 @@ process.on("uncaughtException", err => console.error("❌ Uncaught Exception:", 
 // ==================================================
 const express = require("express");
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 app.get("/", (_, res) => res.status(200).send("BattleFront Madness bot online"));
 app.get("/health", (_, res) => res.status(200).json({ status: "ok", uptime: process.uptime() }));
@@ -29,7 +29,11 @@ const {
   Collection,
   EmbedBuilder,
   REST,
-  Routes
+  Routes,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder
 } = require("discord.js");
 
 const fs = require("fs");
@@ -140,30 +144,32 @@ client.on("messageCreate", message => {
 });
 
 // ==================================================
-// INTERACTION HANDLER (COMMANDS, DROPDOWNS, BUTTONS)
+// INTERACTION HANDLER
 // ==================================================
 client.on("interactionCreate", async interaction => {
   try {
-    // -------- SLASH COMMANDS --------
+    const { getEvent, getAllEvents, saveEvent } = require("./database/events");
+
+    // ---------------- SLASH COMMANDS ----------------
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (command) await command.execute(interaction);
     }
 
-    // -------- AUTOCOMPLETE --------
+    // ---------------- AUTOCOMPLETE ----------------
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
       if (command?.autocomplete) await command.autocomplete(interaction);
     }
 
-    // -------- SELECT MENUS --------
+    // ---------------- SELECT MENUS ----------------
     if (interaction.isStringSelectMenu()) {
-      const { getEvent, getAllEvents, saveEvent } = require("./database/events");
       const [prefix] = interaction.customId.split("_");
+      const value = interaction.values[0];
 
       // ---- VIEW EVENT ----
       if (prefix === "view") {
-        const event = getEvent(interaction.values[0]);
+        const event = getEvent(value);
         if (!event) return interaction.update({ content: "❌ Event not found.", components: [] });
 
         const embed = new EmbedBuilder()
@@ -171,10 +177,10 @@ client.on("interactionCreate", async interaction => {
           .setDescription(event.description || "No description provided.")
           .addFields(
             { name: "Max Players", value: `${event.maxPlayers}`, inline: true },
-            { name: "Group Size", value: event.groupSize || "N/A", inline: true },
+            { name: "Group Size", value: event.groupSize ? `${event.groupSize}` : "N/A", inline: true },
             { name: "Participants", value: `${event.signups.length}`, inline: true },
-            { name: "Date", value: event.date || "N/A", inline: true },
-            { name: "Time", value: event.time || "N/A", inline: true }
+            { name: "Date", value: event.date ? `${event.date}` : "N/A", inline: true },
+            { name: "Time", value: event.time ? `${event.time}` : "N/A", inline: true }
           )
           .setColor(0x1abc9c)
           .setTimestamp();
@@ -186,34 +192,22 @@ client.on("interactionCreate", async interaction => {
           squads[g].push(`<@${p.id}>${p.squadLeader ? " ⭐" : ""}`);
         }
         for (const [g, members] of Object.entries(squads)) {
-          embed.addFields({ name: `Squad ${g}`, value: members.join("\n"), inline: true });
+          embed.addFields({
+            name: `Squad ${g}`,
+            value: members.length ? members.join("\n") : "No members",
+            inline: true
+          });
         }
 
         return interaction.update({ embeds: [embed], components: [] });
       }
 
-      // ---- DELETE EVENT ----
-      if (prefix === "delete") {
-        const events = getAllEvents();
-        const event = events[interaction.values[0]];
-        if (!event) return interaction.update({ content: "❌ Event not found.", components: [] });
-
-        delete events[event.id];
-        saveEvent(null, events);
-
-        const logCh = client.channels.cache.get(MOD_LOG_CHANNEL);
-        if (logCh) logCh.send(`🗑️ ${interaction.user.tag} deleted event **${event.name}**`);
-
-        return interaction.update({ content: `🗑️ Event **${event.name}** deleted.`, components: [] });
-      }
-
       // ---- APPLY EVENT ----
       if (prefix === "apply") {
         const userId = interaction.user.id;
-        const eventId = interaction.values[0];
-        const event = getEvent(eventId);
-
+        const event = getEvent(value);
         if (!event) return interaction.update({ content: "❌ Event not found.", components: [], ephemeral: true });
+
         if (!event.signups) event.signups = [];
         if (event.signups.find(u => u.id === userId))
           return interaction.update({ content: "⚠️ You already applied.", components: [], ephemeral: true });
@@ -226,7 +220,7 @@ client.on("interactionCreate", async interaction => {
         else if (subCount < event.maxPlayers) status = "sub";
 
         event.signups.push({ id: userId, status, group: null, squadLeader: false });
-        saveEvent(eventId, event);
+        saveEvent(value, event);
 
         return interaction.update({
           content: `✅ Applied to **${event.name}**\n📌 Status: **${status.toUpperCase()}**`,
@@ -234,12 +228,27 @@ client.on("interactionCreate", async interaction => {
           ephemeral: true
         });
       }
+
+      // ---- DELETE EVENT ----
+      if (prefix === "delete") {
+        const events = getAllEvents();
+        const event = events[value];
+        if (!event) return interaction.update({ content: "❌ Event not found.", components: [] });
+
+        delete events[event.id];
+        saveEvent(null, events);
+
+        const logCh = client.channels.cache.get(MOD_LOG_CHANNEL);
+        if (logCh) logCh.send(`🗑️ ${interaction.user.tag} deleted event **${event.name}**`);
+
+        return interaction.update({ content: `🗑️ Event **${event.name}** deleted.`, components: [] });
+      }
     }
 
-    // -------- BUTTONS (Pagination, etc) --------
+    // ---------------- BUTTONS (pagination, etc.) ----------------
     if (interaction.isButton()) {
-      const { getAllEvents } = require("./database/events");
       const { buildEventMenu } = require("./utils/paginatedMenu");
+      const { getAllEvents } = require("./database/events");
 
       const [prefix, dir, pageStr] = interaction.customId.split("_");
       if (!["view", "assign", "edit"].includes(prefix)) return;
