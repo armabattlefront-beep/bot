@@ -37,7 +37,11 @@ const {
   Collection,
   EmbedBuilder,
   REST,
-  Routes
+  Routes,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder
 } = require("discord.js");
 
 const fs = require("fs");
@@ -203,27 +207,19 @@ client.on("interactionCreate", async interaction => {
     // ---------------- AUTOCOMPLETE ----------------
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
-      if (command?.autocomplete) {
-        await command.autocomplete(interaction);
-      }
+      if (command?.autocomplete) await command.autocomplete(interaction);
     }
 
     // ---------------- SELECT MENUS ----------------
     if (interaction.isStringSelectMenu()) {
-      const {
-        getEvent,
-        getAllEvents,
-        saveEvent
-      } = require("./database/events");
+      const { getEvent, getAllEvents, saveEvent } = require("./database/events");
+      const [prefix] = interaction.customId.split("_");
 
-      // VIEW EVENT
-      if (interaction.customId === "view_event_select") {
+      // -------- VIEW EVENT --------
+      if (prefix === "view") {
         const event = getEvent(interaction.values[0]);
         if (!event)
-          return interaction.update({
-            content: "❌ Event not found.",
-            components: []
-          });
+          return interaction.update({ content: "❌ Event not found.", components: [] });
 
         const embed = new EmbedBuilder()
           .setTitle(`🗂️ Event: ${event.name}`)
@@ -242,11 +238,8 @@ client.on("interactionCreate", async interaction => {
         for (const p of event.signups) {
           const g = p.group || "Unassigned";
           if (!squads[g]) squads[g] = [];
-          squads[g].push(
-            `<@${p.id}>${p.squadLeader ? " ⭐" : ""}`
-          );
+          squads[g].push(`<@${p.id}>${p.squadLeader ? " ⭐" : ""}`);
         }
-
         for (const [g, members] of Object.entries(squads)) {
           embed.addFields({
             name: `Squad ${g}`,
@@ -258,15 +251,12 @@ client.on("interactionCreate", async interaction => {
         return interaction.update({ embeds: [embed], components: [] });
       }
 
-      // DELETE EVENT
-      if (interaction.customId === "delete_event_select") {
+      // -------- DELETE EVENT --------
+      if (prefix === "delete") {
         const events = getAllEvents();
         const event = events[interaction.values[0]];
         if (!event)
-          return interaction.update({
-            content: "❌ Event not found.",
-            components: []
-          });
+          return interaction.update({ content: "❌ Event not found.", components: [] });
 
         delete events[event.id];
         saveEvent(null, events);
@@ -281,15 +271,27 @@ client.on("interactionCreate", async interaction => {
           logCh.send(`🗑️ ${interaction.user.tag} deleted event **${event.name}**`);
       }
     }
+
+    // ---------------- PAGINATION BUTTONS ----------------
+    if (interaction.isButton()) {
+      const { getAllEvents } = require("./database/events");
+      const [prefix, dir, pageStr] = interaction.customId.split("_");
+      if (!["view", "assign", "edit"].includes(prefix)) return;
+
+      let page = parseInt(pageStr, 10);
+      if (dir === "next") page++;
+      if (dir === "prev") page--;
+
+      const events = Object.values(getAllEvents()).filter(ev => ev.timestamp > Date.now());
+      const { buildEventMenu } = require("./utils/paginatedMenu");
+      const { rows } = buildEventMenu(events, page, `${prefix}_event`);
+
+      await interaction.update({ components: rows });
+    }
   } catch (err) {
     console.error("❌ Interaction error:", err);
     if (!interaction.replied && !interaction.deferred) {
-      interaction
-        .reply({
-          content: "❌ Something went wrong.",
-          ephemeral: true
-        })
-        .catch(() => {});
+      interaction.reply({ content: "❌ Something went wrong.", ephemeral: true }).catch(() => {});
     }
   }
 });
