@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require("discord.js");
-const { getAllEvents, getEvent } = require("../database/events");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { getAllEvents } = require("../database/events");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -7,7 +7,8 @@ module.exports = {
     .setDescription("Select an event to view its details"),
 
   async execute(interaction) {
-    const events = Object.values(getAllEvents()).filter(ev => ev.timestamp > Date.now());
+    // Convert events object to array & filter future events
+    const events = Object.values(getAllEvents() || []).filter(ev => ev.timestamp > Date.now());
 
     if (!events.length) {
       return interaction.reply({
@@ -16,7 +17,7 @@ module.exports = {
       });
     }
 
-    // Build dropdown options
+    // Create dropdown options
     const options = events.map(ev => ({
       label: ev.name,
       description: ev.description?.slice(0, 100) || "No description",

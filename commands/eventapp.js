@@ -7,11 +7,17 @@ module.exports = {
     .setDescription("Apply for a BattleFront event"),
 
   async execute(interaction) {
-    const events = getAllEvents(); // Get all events for dropdown
-    if (!events || events.length === 0) {
-      return interaction.reply({ content: "❌ There are currently no open events.", ephemeral: true });
+    // Convert events object to array & filter future events
+    const events = Object.values(getAllEvents() || []).filter(ev => ev.timestamp > Date.now());
+
+    if (!events.length) {
+      return interaction.reply({
+        content: "❌ There are currently no open events.",
+        ephemeral: true
+      });
     }
 
+    // Create dropdown options
     const options = events.map(ev => ({
       label: ev.name,
       description: ev.description?.slice(0, 100) || "No description",
