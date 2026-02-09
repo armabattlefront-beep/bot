@@ -16,8 +16,13 @@ const PORT = process.env.PORT || 8080;
 app.get("/", (_, res) => res.status(200).send("BattleFront Madness bot online"));
 app.get("/health", (_, res) => res.status(200).json({ status: "ok", uptime: process.uptime() }));
 
-const { app: dashboardApp } = require("./dashboard/server");
-app.use("/dashboard", dashboardApp);
+let dashboardApp;
+try {
+  dashboardApp = require("./dashboard/server").app;
+  app.use("/dashboard", dashboardApp);
+} catch (err) {
+  console.warn("⚠️ Dashboard server not found or failed to load:", err.message);
+}
 
 // ==================================================
 // DISCORD CLIENT
@@ -29,11 +34,7 @@ const {
   Collection,
   EmbedBuilder,
   REST,
-  Routes,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder
+  Routes
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -51,15 +52,32 @@ const client = new Client({
 });
 
 // ==================================================
+// DATABASE MODULES
+// ==================================================
+let getUser, addXP, setLevel, getDiscordByGamertag;
+try {
+  ({ getUser, addXP, setLevel } = require("./database/xp"));
+  getDiscordByGamertag = require("./database/gamertags").getDiscordByGamertag;
+} catch (err) {
+  console.error("❌ Database modules not found. Make sure ./database/xp.js and ./database/gamertags.js exist.", err);
+  process.exit(1);
+}
+
+const { XP, MESSAGE_COOLDOWN, LEVEL_CHANNEL_ID, KILLFEED_CHANNEL_ID, MOD_LOG_CHANNEL } = require("./config");
+const nextXP = lvl => 100 + lvl * 50;
+
+// ==================================================
 // COMMAND LOADING
 // ==================================================
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
-for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
-  const command = require(path.join(commandsPath, file));
-  if (command?.data?.name && command.execute) client.commands.set(command.data.name, command);
-  else console.warn(`⚠️ ${file} missing data or execute()`);
-}
+fs.readdirSync(commandsPath)
+  .filter(f => f.endsWith(".js"))
+  .forEach(file => {
+    const command = require(path.join(commandsPath, file));
+    if (command?.data?.name && command.execute) client.commands.set(command.data.name, command);
+    else console.warn(`⚠️ ${file} missing data or execute()`);
+  });
 
 // ==================================================
 // SLASH COMMAND REGISTRATION
@@ -79,16 +97,6 @@ async function registerCommands() {
     console.error("❌ Slash command deploy failed:", err);
   }
 }
-
-// ==================================================
-// DATABASE INIT
-// ==================================================
-require("./database/db");
-const { getUser, addXP, setLevel } = require("./database/xp");
-const { getDiscordByGamertag } = require("./database/gamertags");
-const { XP, MESSAGE_COOLDOWN, LEVEL_CHANNEL_ID, KILLFEED_CHANNEL_ID, MOD_LOG_CHANNEL } = require("./config");
-
-const nextXP = lvl => 100 + lvl * 50;
 
 // ==================================================
 // XP HANDLING
@@ -147,34 +155,20 @@ const ticketCommand = client.commands.get("ticket");
 
 client.on("interactionCreate", async interaction => {
   try {
-    // ---- TICKET BUTTONS ----
-    if (interaction.isButton()) {
-      if (ticketCommand) await ticketCommand.handleButton(interaction);
-    }
-
-    // ---- TICKET MODALS ----
-    if (interaction.isModalSubmit()) {
-      if (ticketCommand) await ticketCommand.handleModalSubmit(interaction, client);
-    }
-
-    // ---- SLASH COMMANDS ----
+    if (interaction.isButton() && ticketCommand) await ticketCommand.handleButton(interaction);
+    if (interaction.isModalSubmit() && ticketCommand) await ticketCommand.handleModalSubmit(interaction, client);
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (command) await command.execute(interaction);
     }
-
-    // ---- AUTOCOMPLETE ----
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
       if (command?.autocomplete) await command.autocomplete(interaction);
     }
-
-    // ---- STRING SELECT MENUS ----
     if (interaction.isStringSelectMenu()) {
       const [prefix] = interaction.customId.split("_");
       const value = interaction.values[0];
-      const { getEvent, getAllEvents, saveEvent } = require("./database/events");
-
+      const { getEvent } = require("./database/events");
       if (prefix === "view") {
         const event = getEvent(value);
         if (!event) return interaction.update({ content: "❌ Event not found.", components: [] });
@@ -197,7 +191,6 @@ client.on("interactionCreate", async interaction => {
 // ==================================================
 // ONBOARDING / WELCOME
 // ==================================================
-const { STAFF_ROLE_IDS } = require("./config");
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || "123456789012345678";
 
 client.on("guildMemberAdd", async member => {
@@ -209,7 +202,7 @@ client.on("guildMemberAdd", async member => {
       .setTitle(`Welcome to ${member.guild.name}!`)
       .setDescription(
         `Hey <@${member.id}>! Welcome to **BattleFront Madness**!\n\n` +
-        `📌 Make sure to read the rules and guidelines.\n` +
+        `📌 Read the rules and guidelines.\n` +
         `🛠️ Need support? Use the /ticket command.\n` +
         `🎮 Check out our events and community channels.\n` +
         `💡 Have fun and enjoy your time here!`
@@ -218,7 +211,6 @@ client.on("guildMemberAdd", async member => {
       .setTimestamp();
 
     await channel.send({ content: `<@${member.id}>`, embeds: [embed] });
-
   } catch (err) {
     console.error("❌ Welcome message failed:", err);
   }
@@ -235,7 +227,6 @@ client.once("ready", async () => {
     const { connectRcon, sendRconCommand } = require("./rconClient");
     await connectRcon();
     console.log("✅ UDP RCON connected");
-
     await sendRconCommand("playerList", 15000);
     console.log("📡 RCON test OK");
   } catch (err) {
