@@ -187,13 +187,40 @@ client.on("interactionCreate", async interaction => {
 
         return interaction.update({ embeds: [embed], components: [] });
       }
-
-      // other select menu handlers...
     }
-
   } catch (err) {
     console.error(err);
     if (!interaction.replied) interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
+  }
+});
+
+// ==================================================
+// ONBOARDING / WELCOME
+// ==================================================
+const { STAFF_ROLE_IDS } = require("./config");
+const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || "123456789012345678";
+
+client.on("guildMemberAdd", async member => {
+  try {
+    const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Welcome to ${member.guild.name}!`)
+      .setDescription(
+        `Hey <@${member.id}>! Welcome to **BattleFront Madness**!\n\n` +
+        `📌 Make sure to read the rules and guidelines.\n` +
+        `🛠️ Need support? Use the /ticket command.\n` +
+        `🎮 Check out our events and community channels.\n` +
+        `💡 Have fun and enjoy your time here!`
+      )
+      .setColor(0x3498db)
+      .setTimestamp();
+
+    await channel.send({ content: `<@${member.id}>`, embeds: [embed] });
+
+  } catch (err) {
+    console.error("❌ Welcome message failed:", err);
   }
 });
 
