@@ -2,60 +2,63 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { getLeaderboard } = require("../database/xp");
 
 // =======================
-// RANK NAMES
+// GET RANK NAME BY LEVEL
 // =======================
 function getRankName(level) {
-  if (level < 5) return "Recruit";
-  if (level < 10) return "Private";
-  if (level < 20) return "Corporal";
-  if (level < 30) return "Sergeant";
-  if (level < 40) return "Lieutenant";
-  if (level < 50) return "Captain";
-  if (level < 70) return "Major";
-  if (level < 90) return "Colonel";
-  return "General";
+  const ranks = [
+    "Recruit",
+    "Private",
+    "Corporal",
+    "Sergeant",
+    "Lieutenant",
+    "Captain",
+    "Major",
+    "Colonel",
+    "General",
+    "Field Marshal"
+  ];
+  return ranks[Math.min(level, ranks.length - 1)];
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("leaderboard")
-    .setDescription("Show the top BattleFront ranks")
-    .addIntegerOption(opt =>
-      opt
+    .setDescription("Show the top BattleFront ranks!")
+    .addIntegerOption(option =>
+      option
         .setName("top")
-        .setDescription("How many users to show (default 10)")
-        .setMinValue(1)
-        .setMaxValue(25)
+        .setDescription("Number of top users to show (default 10)")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
     try {
-      const top = interaction.options.getInteger("top") || 10;
-      const users = getLeaderboard(top);
+      const topCount = interaction.options.getInteger("top") || 10;
 
-      if (!users.length) {
-        return interaction.reply({
-          content: "No XP data found yet.",
-          ephemeral: true
-        });
+      // fetch leaderboard from DB
+      const users = getLeaderboard(topCount);
+
+      if (!users || users.length === 0) {
+        return interaction.reply({ content: "No XP data found yet!", ephemeral: true });
       }
 
-      const description = users
-        .map((u, i) =>
-          `**${i + 1}. <@${u.userId}>** — ${getRankName(u.level)} | Level **${u.level}** | ⭐ **${u.xp} XP**`
-        )
-        .join("\n");
+      // build embed description
+      let description = "";
+      for (let i = 0; i < users.length; i++) {
+        const user = users[i];
+        description += `**${i + 1}. <@${user.userId}>** — ${getRankName(user.level)} | Level ${user.level} | ⭐ ${user.xp} XP\n`;
+      }
 
       const embed = new EmbedBuilder()
         .setTitle("🎖️ BattleFront Leaderboard")
-        .setColor(0x00ff00)
         .setDescription(description)
+        .setColor(0x00ff00)
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed] });
     } catch (err) {
-      console.error("❌ Leaderboard error:", err);
-      await interaction.reply({
+      console.error("LEADERBOARD ERROR:", err);
+      return interaction.reply({
         content: "❌ Failed to load leaderboard.",
         ephemeral: true
       });
