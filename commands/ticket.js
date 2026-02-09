@@ -47,7 +47,7 @@ module.exports = {
     await interaction.reply({
       content: "📝 **Select the type of support you need:**",
       components: [row],
-      ephemeral: true
+      flags: InteractionResponseFlags.Ephemeral
     });
   },
 
@@ -59,7 +59,8 @@ module.exports = {
 
     const typeKey = interaction.customId.replace("ticket_type_", "");
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo)
+      return interaction.reply({ content: "❌ Invalid ticket type.", flags: InteractionResponseFlags.Ephemeral });
 
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -86,10 +87,11 @@ module.exports = {
 
     const [, , typeKey, userId] = interaction.customId.split("_");
     if (interaction.user.id !== userId)
-      return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
+      return interaction.reply({ content: "❌ This is not your ticket.", flags: InteractionResponseFlags.Ephemeral });
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo)
+      return interaction.reply({ content: "❌ Invalid ticket type.", flags: InteractionResponseFlags.Ephemeral });
 
     const priority = interaction.values[0];
 
@@ -143,10 +145,11 @@ module.exports = {
 
     const [, , typeKey, priority, userId] = interaction.customId.split("_");
     if (interaction.user.id !== userId)
-      return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
+      return interaction.reply({ content: "❌ This is not your ticket.", flags: InteractionResponseFlags.Ephemeral });
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo)
+      return interaction.reply({ content: "❌ Invalid ticket type.", flags: InteractionResponseFlags.Ephemeral });
 
     const values = {};
     for (const key of interaction.fields.fields.keys()) {
@@ -166,35 +169,34 @@ module.exports = {
     if (values.ign) embed.addFields({ name: "IGN", value: values.ign, inline: true });
     if (values.attachments) embed.addFields({ name: "Attachments", value: values.attachments });
 
-    // ✅ Use Text Channel — no forum issues
+    // ✅ Send directly to text channel
     const board = client.channels.cache.get(config.TICKET_BOARD_CHANNEL);
-    if (!board) return interaction.reply({ content: "❌ Ticket board channel not found.", ephemeral: true });
+    if (!board)
+      return interaction.reply({ content: "❌ Ticket board channel not found.", flags: InteractionResponseFlags.Ephemeral });
 
-    const thread = await board.threads.create({
-      name: `${typeKey}-${interaction.user.username}`,
-      autoArchiveDuration: 1440,
-      reason: `Ticket created by ${interaction.user.tag}`
-    });
-
-    await thread.send({
+    await board.send({
       content: typeInfo.role ? `<@&${typeInfo.role}>` : null,
       embeds: [embed]
     });
 
+    // Save ticket to DB
     addTicket({
-      id: thread.id,
+      id: `${Date.now()}_${userId}`,
       creatorId: userId,
       type: typeKey,
       priority,
       status: "open",
-      threadId: thread.id,
+      threadId: null,
       channelId: board.id,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      details: values.description,
+      attachments: values.attachments || null
     });
 
     await interaction.reply({
-      content: `✅ Ticket created: ${thread.name}`,
-      ephemeral: true
+      content: `✅ Ticket submitted successfully!`,
+      flags: InteractionResponseFlags.Ephemeral
     });
   }
 };

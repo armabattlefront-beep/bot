@@ -1,3 +1,4 @@
+// database/tickets.js
 const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
@@ -8,7 +9,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, "tickets.db");
 const db = new Database(DB_PATH);
 
-// Create tickets table
+// Create tickets table if not exists
 db.prepare(`
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
@@ -32,7 +33,10 @@ function addTicket(ticket) {
     (id, creatorId, type, priority, status, threadId, channelId, createdAt, updatedAt, details, attachments)
     VALUES (@id,@creatorId,@type,@priority,@status,@threadId,@channelId,@createdAt,@updatedAt,@details,@attachments)
   `);
-  stmt.run(ticket);
+  stmt.run({
+    ...ticket,
+    updatedAt: Date.now()
+  });
 }
 
 // Update ticket
@@ -57,7 +61,7 @@ function updateTicket(id, updates) {
   return true;
 }
 
-// Get ticket
+// Get ticket by ID
 function getTicket(id) {
   return db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
 }

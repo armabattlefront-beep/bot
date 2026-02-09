@@ -30,7 +30,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
-const { addXP, getUser, getNextLevelXP } = require("./database/xp");
+const { addXP, getNextLevelXP } = require("./database/xp");
 
 const client = new Client({
   intents: [
@@ -68,7 +68,6 @@ function giveXP(userId, amount) {
   const nextLevel = getNextLevelXP(level);
 
   if (xp >= nextLevel) {
-    // Level up
     const channel = client.channels.cache.get(config.LEVEL_CHANNEL_ID);
     if (channel) {
       channel.send({
@@ -84,7 +83,6 @@ function giveXP(userId, amount) {
   }
 }
 
-// Add XP on messages
 client.on("messageCreate", message => {
   if (!message.guild || message.author.bot) return;
 
