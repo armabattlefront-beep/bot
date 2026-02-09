@@ -1,14 +1,14 @@
 const db = require("./db");
 
 // =======================
-// CONFIG
+// XP CURVE
 // =======================
 function getNextLevelXP(level) {
   return 100 + level * 50;
 }
 
 // =======================
-// USER FETCH / CREATE
+// GET OR CREATE USER
 // =======================
 function getUser(userId) {
   let user = db
@@ -27,7 +27,7 @@ function getUser(userId) {
 }
 
 // =======================
-// XP ADD + LEVEL UP
+// ADD XP
 // =======================
 function addXP(userId, amount) {
   const user = getUser(userId);
