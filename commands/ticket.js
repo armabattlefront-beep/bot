@@ -1,4 +1,3 @@
-// commands/ticket.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -8,11 +7,12 @@ const {
   TextInputBuilder,
   TextInputStyle,
   EmbedBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  ChannelType
 } = require("discord.js");
 
-const { addTicket } = require("../database/tickets");
 const config = require("../config");
+const { addTicket } = require("../database/tickets");
 
 // ==============================
 // TICKET TYPES
@@ -48,74 +48,65 @@ const TICKET_TYPES = {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("ticket")
-    .setDescription("Open a new support ticket"),
+    .setDescription("Open a support ticket"),
 
   // ==============================
-  // STEP 1 — SLASH COMMAND
+  // /ticket
   // ==============================
   async execute(interaction) {
-    const row = new ActionRowBuilder().addComponents(
-      Object.entries(TICKET_TYPES).map(([key, type]) =>
-        new ButtonBuilder()
-          .setCustomId(`ticket_type_${key}`)
-          .setLabel(type.label)
-          .setStyle(ButtonStyle.Primary)
-      )
+    const buttons = Object.entries(TICKET_TYPES).map(([key, type]) =>
+      new ButtonBuilder()
+        .setCustomId(`ticket_type_${key}`)
+        .setLabel(type.label)
+        .setStyle(ButtonStyle.Primary)
     );
 
     await interaction.reply({
       content: "📝 **Select the type of support you need:**",
-      components: [row],
+      components: [new ActionRowBuilder().addComponents(buttons)],
       ephemeral: true
     });
   },
 
   // ==============================
-  // STEP 2 — TYPE BUTTON
+  // BUTTON HANDLER
   // ==============================
   async handleButton(interaction) {
     if (!interaction.customId.startsWith("ticket_type_")) return;
 
     const typeKey = interaction.customId.replace("ticket_type_", "");
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) {
-      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
-    }
+    if (!typeInfo) return;
 
-    const row = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(`ticket_priority_${typeKey}_${interaction.user.id}`)
-        .setPlaceholder("Select ticket priority")
-        .addOptions([
-          { label: "High", value: "High", emoji: "🔥" },
-          { label: "Medium", value: "Medium", emoji: "⚠️" },
-          { label: "Low", value: "Low", emoji: "🧊" }
-        ])
-    );
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`ticket_priority_${typeKey}_${interaction.user.id}`)
+      .setPlaceholder("Select ticket priority")
+      .addOptions(
+        { label: "High", value: "High", emoji: "🔥" },
+        { label: "Medium", value: "Medium", emoji: "⚠️" },
+        { label: "Low", value: "Low", emoji: "🧊" }
+      );
 
     await interaction.update({
-      content: `**${typeInfo.label}** selected.\nNow choose the priority:`,
-      components: [row]
+      content: `**${typeInfo.label}** selected.\nChoose priority:`,
+      components: [new ActionRowBuilder().addComponents(select)]
     });
   },
 
   // ==============================
-  // STEP 3 — PRIORITY SELECT
+  // PRIORITY SELECT
   // ==============================
   async handlePrioritySelect(interaction) {
     if (!interaction.customId.startsWith("ticket_priority_")) return;
 
     const [, , typeKey, userId] = interaction.customId.split("_");
     if (interaction.user.id !== userId) {
-      return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
-    }
-
-    const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) {
-      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+      return interaction.reply({ content: "❌ Not your ticket.", ephemeral: true });
     }
 
     const priority = interaction.values[0];
+    const typeInfo = TICKET_TYPES[typeKey];
+    if (!typeInfo) return;
 
     const modal = new ModalBuilder()
       .setCustomId(`ticket_modal_${typeKey}_${priority}_${userId}`)
@@ -160,19 +151,30 @@ module.exports = {
   },
 
   // ==============================
-  // STEP 4 — MODAL SUBMIT
+  // MODAL SUBMIT
   // ==============================
   async handleModalSubmit(interaction, client) {
     if (!interaction.customId.startsWith("ticket_modal_")) return;
 
     const [, , typeKey, priority, userId] = interaction.customId.split("_");
     if (interaction.user.id !== userId) {
-      return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
+      return interaction.reply({ content: "❌ Not your ticket.", ephemeral: true });
     }
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) {
-      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo) return;
+
+    // SAFELY FETCH BOARD CHANNEL
+    const board = await client.channels.fetch(config.TICKET_BOARD_CHANNEL).catch(() => null);
+
+    if (
+      !board ||
+      ![ChannelType.GuildText, ChannelType.GuildForum].includes(board.type)
+    ) {
+      return interaction.reply({
+        content: "❌ Ticket system misconfigured. Please contact staff.",
+        ephemeral: true
+      });
     }
 
     const values = {};
@@ -193,18 +195,14 @@ module.exports = {
     if (values.ign) embed.addFields({ name: "IGN", value: values.ign, inline: true });
     if (values.attachments) embed.addFields({ name: "Attachments", value: values.attachments });
 
-    const board = client.channels.cache.get(config.TICKET_BOARD_CHANNEL);
-    if (!board) {
-      return interaction.reply({ content: "❌ Ticket board channel not found.", ephemeral: true });
-    }
-
     const thread = await board.threads.create({
       name: `${typeKey}-${interaction.user.username}`,
-      autoArchiveDuration: 1440
+      autoArchiveDuration: 1440,
+      reason: "New support ticket"
     });
 
     await thread.send({
-      content: typeInfo.role ? `<@&${typeInfo.role}>` : null,
+      content: typeInfo.role ? `<@&${typeInfo.role}>` : undefined,
       embeds: [embed]
     });
 
@@ -220,7 +218,7 @@ module.exports = {
     });
 
     await interaction.reply({
-      content: `✅ Ticket created: ${thread}`,
+      content: `✅ Ticket created successfully: ${thread}`,
       ephemeral: true
     });
   }
