@@ -1,8 +1,18 @@
 const db = require("./db");
 
+// =======================
+// CONFIG
+// =======================
+function getNextLevelXP(level) {
+  return 100 + level * 50;
+}
+
+// =======================
+// USER FETCH / CREATE
+// =======================
 function getUser(userId) {
   let user = db
-    .prepare("SELECT * FROM users WHERE userId = ?")
+    .prepare("SELECT userId, xp, level FROM users WHERE userId = ?")
     .get(userId);
 
   if (!user) {
@@ -16,25 +26,42 @@ function getUser(userId) {
   return user;
 }
 
+// =======================
+// XP ADD + LEVEL UP
+// =======================
 function addXP(userId, amount) {
   const user = getUser(userId);
-  const newXP = user.xp + amount;
+
+  let xp = user.xp + amount;
+  let level = user.level;
+
+  while (xp >= getNextLevelXP(level)) {
+    xp -= getNextLevelXP(level);
+    level++;
+  }
 
   db.prepare(
-    "UPDATE users SET xp = ? WHERE userId = ?"
-  ).run(newXP, userId);
+    "UPDATE users SET xp = ?, level = ? WHERE userId = ?"
+  ).run(xp, level, userId);
 
-  return newXP;
+  return { xp, level };
 }
 
-function setLevel(userId, level) {
-  db.prepare(
-    "UPDATE users SET level = ? WHERE userId = ?"
-  ).run(level, userId);
+// =======================
+// LEADERBOARD
+// =======================
+function getLeaderboard(limit = 10) {
+  return db.prepare(`
+    SELECT userId, xp, level
+    FROM users
+    ORDER BY level DESC, xp DESC
+    LIMIT ?
+  `).all(limit);
 }
 
 module.exports = {
   getUser,
   addXP,
-  setLevel
+  getLeaderboard,
+  getNextLevelXP
 };

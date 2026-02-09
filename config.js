@@ -28,17 +28,28 @@ module.exports = {
     LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "123456789012345678",
 
     // =========================
-    // ROLES
+    // STAFF ROLES
     // =========================
-    STAFF_ROLE_IDS: process.env.STAFF_ROLE_IDS
-        ? process.env.STAFF_ROLE_IDS.split(",")
-        : [
-            "1343247105833046098",
-            "1359891673387368559",
-            "1332756164366172212",
-            "1332756114386849843",
-            "1332756065430929408"
-        ],
+    STAFF_ROLE_IDS: {
+        moderators: "1332756114386849843", // In-game / Discord Reports
+        admins: "1332756164366172212",     // Technical Support
+        support: "1387785600140185771",    // General Community Support
+        wellbeing: "1470212013979471973"   // Wellbeing / Mental Health
+    },
+
+    // =========================
+    // TICKET SYSTEM
+    // =========================
+    TICKET_TYPES: [
+        "inGame",          // In-game report
+        "discordReport",   // Discord report
+        "technical",       // Technical issue
+        "discordSupport",  // Discord support
+        "wellbeing"        // Community / wellbeing support
+    ],
+
+    // Channel where all tickets are posted (thread-based system)
+    TICKET_BOARD_CHANNEL: process.env.TICKET_BOARD_CHANNEL || "123456789012345678",
 
     // =========================
     // ANTI-SPAM / RAID
