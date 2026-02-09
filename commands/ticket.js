@@ -12,6 +12,7 @@ const {
 } = require("discord.js");
 
 const { addTicket, generateTicketId, updateTicket, getTicket } = require("../database/tickets");
+const { addXP, getMetrics } = require("../database/xp");
 const config = require("../config");
 
 // ==============================
@@ -30,9 +31,9 @@ module.exports = {
     .setName("ticket")
     .setDescription("Open a new support ticket"),
 
-  // -----------------------------
+  // ==============================
   // STEP 1 — Slash Command
-  // -----------------------------
+  // ==============================
   async execute(interaction) {
     const row = new ActionRowBuilder().addComponents(
       Object.entries(TICKET_TYPES).map(([key, type]) =>
@@ -50,16 +51,15 @@ module.exports = {
     });
   },
 
-  // -----------------------------
+  // ==============================
   // STEP 2 — Handle Type Button
-  // -----------------------------
+  // ==============================
   async handleButton(interaction) {
     if (!interaction.customId.startsWith("ticket_type_")) return;
 
     const typeKey = interaction.customId.replace("ticket_type_", "");
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo)
-      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -78,9 +78,9 @@ module.exports = {
     });
   },
 
-  // -----------------------------
+  // ==============================
   // STEP 3 — Handle Priority Select
-  // -----------------------------
+  // ==============================
   async handlePrioritySelect(interaction) {
     if (!interaction.customId.startsWith("ticket_priority_")) return;
 
@@ -89,8 +89,7 @@ module.exports = {
       return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo)
-      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
     const priority = interaction.values[0];
 
@@ -101,44 +100,38 @@ module.exports = {
     const rows = [];
 
     if (["inGame", "discordReport"].includes(typeKey)) {
-      rows.push(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId("ign")
-            .setLabel("Player IGN")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-        )
-      );
+      rows.push(new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("ign")
+          .setLabel("Player IGN")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ));
     }
 
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("description")
-          .setLabel("Describe the issue")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(true)
-      )
-    );
+    rows.push(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("description")
+        .setLabel("Describe the issue")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+    ));
 
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("attachments")
-          .setLabel("Links (screenshots / videos)")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false)
-      )
-    );
+    rows.push(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("attachments")
+        .setLabel("Links (screenshots / videos)")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false)
+    ));
 
     modal.addComponents(rows);
     await interaction.showModal(modal);
   },
 
-  // -----------------------------
+  // ==============================
   // STEP 4 — Handle Modal Submit
-  // -----------------------------
+  // ==============================
   async handleModalSubmit(interaction, client) {
     if (!interaction.customId.startsWith("ticket_modal_")) return;
 
@@ -147,12 +140,11 @@ module.exports = {
       return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo)
-      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
     const values = {};
-    for (const [key, field] of interaction.fields.fields) {
-      values[key] = field.value;
+    for (const key of interaction.fields.fields.keys()) {
+      values[key] = interaction.fields.getTextInputValue(key);
     }
 
     const embed = new EmbedBuilder()
@@ -169,8 +161,7 @@ module.exports = {
     if (values.attachments) embed.addFields({ name: "Attachments", value: values.attachments });
 
     const board = client.channels.cache.get(config.TICKET_BOARD_CHANNEL);
-    if (!board)
-      return interaction.reply({ content: "❌ Ticket board channel not found.", ephemeral: true });
+    if (!board) return interaction.reply({ content: "❌ Ticket board channel not found.", ephemeral: true });
 
     const closeRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -185,19 +176,14 @@ module.exports = {
       components: [closeRow]
     });
 
-    // Try creating a thread safely
-    let threadId = null;
-    try {
-      const thread = await msg.startThread({
-        name: `ticket-${userId}-${Date.now()}`,
-        autoArchiveDuration: 1440,
-        reason: `Ticket created by ${interaction.user.tag}`
-      });
-      threadId = thread.id;
-    } catch (err) {
-      console.warn("Could not create thread for ticket:", err);
-    }
+    // Create thread
+    const thread = await msg.startThread({
+      name: `ticket-${userId}-${Date.now()}`,
+      autoArchiveDuration: 1440,
+      reason: `Ticket created by ${interaction.user.tag}`
+    });
 
+    // Save ticket to DB
     const ticketId = generateTicketId(userId);
     addTicket({
       id: ticketId,
@@ -205,8 +191,7 @@ module.exports = {
       type: typeKey,
       priority,
       status: "open",
-      threadId,
-      messageId: msg.id,
+      threadId: thread.id,
       channelId: board.id,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -214,27 +199,29 @@ module.exports = {
       attachments: values.attachments || null
     });
 
+    // ✅ Award XP for ticket submit
+    const metrics = getMetrics();
+    addXP(userId, metrics.ticketSubmit);
+
     await interaction.reply({
-      content: `✅ Ticket submitted successfully!`,
+      content: `✅ Ticket submitted successfully! Thread: ${thread.toString()}`,
       ephemeral: true
     });
   },
 
-  // -----------------------------
+  // ==============================
   // STEP 5 — Handle Close Button
-  // -----------------------------
+  // ==============================
   async handleCloseButton(interaction) {
     const msg = interaction.message;
     if (!msg) return;
 
-    // Only staff can close
+    // Check staff permissions
     if (!interaction.member.roles.cache.some(r => Object.values(config.STAFF_ROLE_IDS).includes(r.id))) {
-      return interaction.reply({
-        content: "❌ You do not have permission to close this ticket.",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "❌ You do not have permission to close this ticket.", ephemeral: true });
     }
 
+    // Disable the button visually
     const disabledRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("ticket_close")
@@ -242,15 +229,33 @@ module.exports = {
         .setStyle(ButtonStyle.Danger)
         .setDisabled(true)
     );
-
     await msg.edit({ components: [disabledRow] });
 
+    // Lock and archive thread
+    let threadLink = "Thread not found";
+    if (msg.hasThread && msg.thread) {
+      try {
+        await msg.thread.send(`📌 Ticket closed by staff <@${interaction.user.id}>. This thread is now archived.`);
+        await msg.thread.setLocked(true, `Ticket closed by ${interaction.user.tag}`);
+        await msg.thread.setArchived(true, `Ticket closed by ${interaction.user.tag}`);
+        threadLink = `[Go to thread](${msg.thread.url})`;
+      } catch (err) {
+        console.error("Failed to lock/archive thread:", err);
+      }
+    }
+
     // Update ticket status in DB
-    const ticket = getTicket(msg.id); // now works because we store messageId
+    const ticket = getTicket(msg.id);
     if (ticket) updateTicket(ticket.id, { status: "closed" });
 
+    // ✅ Award XP for ticket resolution to the staff member
+    if (ticket) {
+      const metrics = getMetrics();
+      addXP(interaction.user.id, metrics.ticketResolved);
+    }
+
     await interaction.reply({
-      content: "✅ Ticket closed successfully.",
+      content: `✅ Ticket closed successfully! ID: \`${ticket?.id || "unknown"}\` ${threadLink}`,
       ephemeral: true
     });
   }

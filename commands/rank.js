@@ -1,5 +1,6 @@
+// commands/rank.js
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getUser, addXP, setLevel } = require("../database/xp"); // only what exists
+const { getUser } = require("../database/xp");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -13,19 +14,20 @@ module.exports = {
 
       const level = Number(user.level) || 0;
       const xp = Number(user.xp) || 0;
-      const nextLevelXP = 100 + level * 50; // ✅ calculate directly
+      const nextLevelXP = 100 + level * 50;
       const progressPercent = Math.floor((xp / nextLevelXP) * 100);
 
       // ----------------------------
-      // Rank display
+      // Rank calculation
       // ----------------------------
       const rankNames = [
         "Recruit", "Private", "Corporal", "Sergeant", "Lieutenant",
-        "Captain", "Major", "Colonel", "General"
+        "Captain", "Major", "Colonel", "General", "Field Marshal"
       ];
 
-      // Simple rank calculation
-      let rankName = rankNames[Math.min(Math.floor(level / 5), rankNames.length - 1)];
+      // Rank based on level (every 5 levels progress through names)
+      const rankIndex = Math.min(Math.floor(level / 5), rankNames.length - 1);
+      const rankName = rankNames[rankIndex];
 
       const rankEmojis = {
         0: "🟢", 5: "🔰", 10: "🪖", 20: "🎖️",
@@ -33,7 +35,7 @@ module.exports = {
       };
 
       let rankDisplay = "🟢 Recruit";
-      const sortedLevels = Object.keys(rankEmojis).map(Number).sort((a,b)=>a-b);
+      const sortedLevels = Object.keys(rankEmojis).map(Number).sort((a, b) => a - b);
       for (const lvl of sortedLevels) {
         if (level >= lvl) rankDisplay = `${rankEmojis[lvl]} ${rankName}`;
       }
@@ -62,7 +64,7 @@ module.exports = {
       if (level >= 70) eliteBadge = "🎖️🏆";
 
       // ----------------------------
-      // Embed with avatar
+      // Embed
       // ----------------------------
       const embed = new EmbedBuilder()
         .setColor("#00ff99")
