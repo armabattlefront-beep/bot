@@ -35,7 +35,7 @@ module.exports = {
   // -----------------------------
   async execute(interaction) {
     const row = new ActionRowBuilder().addComponents(
-      ...Object.entries(TICKET_TYPES).map(([key, type]) =>
+      Object.entries(TICKET_TYPES).map(([key, type]) =>
         new ButtonBuilder()
           .setCustomId(`ticket_type_${key}`)
           .setLabel(type.label)
@@ -58,7 +58,8 @@ module.exports = {
 
     const typeKey = interaction.customId.replace("ticket_type_", "");
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo)
+      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -88,7 +89,8 @@ module.exports = {
       return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo)
+      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
     const priority = interaction.values[0];
 
@@ -145,11 +147,12 @@ module.exports = {
       return interaction.reply({ content: "❌ This is not your ticket.", ephemeral: true });
 
     const typeInfo = TICKET_TYPES[typeKey];
-    if (!typeInfo) return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
+    if (!typeInfo)
+      return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
     const values = {};
-    for (const key of interaction.fields.fields.keys()) {
-      values[key] = interaction.fields.getTextInputValue(key);
+    for (const [key, field] of interaction.fields.fields) {
+      values[key] = field.value;
     }
 
     const embed = new EmbedBuilder()
@@ -165,26 +168,36 @@ module.exports = {
     if (values.ign) embed.addFields({ name: "IGN", value: values.ign, inline: true });
     if (values.attachments) embed.addFields({ name: "Attachments", value: values.attachments });
 
-    // ✅ Send to configured text channel
     const board = client.channels.cache.get(config.TICKET_BOARD_CHANNEL);
-    if (!board) return interaction.reply({ content: "❌ Ticket board channel not found.", ephemeral: true });
+    if (!board)
+      return interaction.reply({ content: "❌ Ticket board channel not found.", ephemeral: true });
 
-    // Create a "Close Ticket" button for staff
     const closeRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ticket_close_${userId}_${Date.now()}`)
+        .setCustomId("ticket_close")
         .setLabel("Close Ticket")
         .setStyle(ButtonStyle.Danger)
     );
 
-    // Send ticket embed + button
     const msg = await board.send({
       content: typeInfo.role ? `<@&${typeInfo.role}>` : null,
       embeds: [embed],
       components: [closeRow]
     });
 
-    // Save to DB with message ID
+    // Try creating a thread safely
+    let threadId = null;
+    try {
+      const thread = await msg.startThread({
+        name: `ticket-${userId}-${Date.now()}`,
+        autoArchiveDuration: 1440,
+        reason: `Ticket created by ${interaction.user.tag}`
+      });
+      threadId = thread.id;
+    } catch (err) {
+      console.warn("Could not create thread for ticket:", err);
+    }
+
     const ticketId = generateTicketId(userId);
     addTicket({
       id: ticketId,
@@ -192,7 +205,8 @@ module.exports = {
       type: typeKey,
       priority,
       status: "open",
-      threadId: msg.id, // save message ID for staff reference
+      threadId,
+      messageId: msg.id,
       channelId: board.id,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -215,13 +229,15 @@ module.exports = {
 
     // Only staff can close
     if (!interaction.member.roles.cache.some(r => Object.values(config.STAFF_ROLE_IDS).includes(r.id))) {
-      return interaction.reply({ content: "❌ You do not have permission to close this ticket.", ephemeral: true });
+      return interaction.reply({
+        content: "❌ You do not have permission to close this ticket.",
+        ephemeral: true
+      });
     }
 
-    // Disable the button
     const disabledRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(msg.components[0].components[0].customId)
+        .setCustomId("ticket_close")
         .setLabel("Closed")
         .setStyle(ButtonStyle.Danger)
         .setDisabled(true)
@@ -229,10 +245,13 @@ module.exports = {
 
     await msg.edit({ components: [disabledRow] });
 
-    // Update ticket status in DB by message ID
-    const ticket = Object.values(getTicket(msg.id)).length ? getTicket(msg.id) : null;
+    // Update ticket status in DB
+    const ticket = getTicket(msg.id); // now works because we store messageId
     if (ticket) updateTicket(ticket.id, { status: "closed" });
 
-    await interaction.reply({ content: "✅ Ticket closed successfully.", ephemeral: true });
+    await interaction.reply({
+      content: "✅ Ticket closed successfully.",
+      ephemeral: true
+    });
   }
 };

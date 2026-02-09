@@ -65,7 +65,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton) {
         await ticket.handleButton(interaction);
-      } else if (interaction.customId.startsWith("ticket_close_") && ticket.handleCloseButton) {
+      } else if (interaction.customId === "ticket_close" && ticket.handleCloseButton) {
         await ticket.handleCloseButton(interaction);
       }
       return;
@@ -84,7 +84,6 @@ client.on("interactionCreate", async (interaction) => {
       if (ticket?.handleModalSubmit) await ticket.handleModalSubmit(interaction, client);
       return;
     }
-
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
     if (!interaction.replied && !interaction.deferred) {

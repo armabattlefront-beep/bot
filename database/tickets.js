@@ -1,3 +1,4 @@
+// database/tickets.js
 const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
@@ -19,6 +20,7 @@ db.prepare(`
     priority TEXT DEFAULT 'Medium',
     status TEXT DEFAULT 'open',
     threadId TEXT,
+    messageId TEXT,
     channelId TEXT,
     createdAt INTEGER,
     updatedAt INTEGER,
@@ -31,7 +33,7 @@ db.prepare(`
 // HELPERS
 // -----------------------------
 function generateTicketId(userId) {
-  return `${Date.now()}_${userId}`;
+  return `${Date.now()}_${userId}_${Math.floor(Math.random() * 1000)}`;
 }
 
 // -----------------------------
@@ -43,8 +45,8 @@ function addTicket(ticket) {
 
   const stmt = db.prepare(`
     INSERT INTO tickets
-      (id, creatorId, type, priority, status, threadId, channelId, createdAt, updatedAt, details, attachments)
-    VALUES (@id,@creatorId,@type,@priority,@status,@threadId,@channelId,@createdAt,@updatedAt,@details,@attachments)
+      (id, creatorId, type, priority, status, threadId, messageId, channelId, createdAt, updatedAt, details, attachments)
+    VALUES (@id,@creatorId,@type,@priority,@status,@threadId,@messageId,@channelId,@createdAt,@updatedAt,@details,@attachments)
   `);
 
   stmt.run({
@@ -70,13 +72,13 @@ function updateTicket(id, updates) {
       priority=@priority,
       status=@status,
       threadId=@threadId,
+      messageId=@messageId,
       channelId=@channelId,
       details=@details,
       attachments=@attachments,
       updatedAt=@updatedAt
     WHERE id=@id
   `);
-
   stmt.run(merged);
   return true;
 }
@@ -91,8 +93,11 @@ function closeTicket(id) {
 // -----------------------------
 // GET TICKET
 // -----------------------------
-function getTicket(id) {
-  return db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
+// Supports lookup by ticket id OR messageId
+function getTicket(identifier) {
+  let ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(identifier);
+  if (!ticket) ticket = db.prepare("SELECT * FROM tickets WHERE messageId = ?").get(identifier);
+  return ticket;
 }
 
 // -----------------------------
