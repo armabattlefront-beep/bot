@@ -16,9 +16,8 @@ const PORT = process.env.PORT || 8080;
 app.get("/", (_, res) => res.status(200).send("BattleFront Madness bot online"));
 app.get("/health", (_, res) => res.status(200).json({ status: "ok", uptime: process.uptime() }));
 
-let dashboardApp;
 try {
-  dashboardApp = require("./dashboard/server").app;
+  const { app: dashboardApp } = require("./dashboard/server");
   app.use("/dashboard", dashboardApp);
 } catch (err) {
   console.warn("⚠️ Dashboard server not found or failed to load:", err.message);
@@ -34,7 +33,12 @@ const {
   Collection,
   EmbedBuilder,
   REST,
-  Routes
+  Routes,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  InteractionResponseFlags
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -52,32 +56,15 @@ const client = new Client({
 });
 
 // ==================================================
-// DATABASE MODULES
-// ==================================================
-let getUser, addXP, setLevel, getDiscordByGamertag;
-try {
-  ({ getUser, addXP, setLevel } = require("./database/xp"));
-  getDiscordByGamertag = require("./database/gamertags").getDiscordByGamertag;
-} catch (err) {
-  console.error("❌ Database modules not found. Make sure ./database/xp.js and ./database/gamertags.js exist.", err);
-  process.exit(1);
-}
-
-const { XP, MESSAGE_COOLDOWN, LEVEL_CHANNEL_ID, KILLFEED_CHANNEL_ID, MOD_LOG_CHANNEL } = require("./config");
-const nextXP = lvl => 100 + lvl * 50;
-
-// ==================================================
 // COMMAND LOADING
 // ==================================================
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
-fs.readdirSync(commandsPath)
-  .filter(f => f.endsWith(".js"))
-  .forEach(file => {
-    const command = require(path.join(commandsPath, file));
-    if (command?.data?.name && command.execute) client.commands.set(command.data.name, command);
-    else console.warn(`⚠️ ${file} missing data or execute()`);
-  });
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
+  const command = require(path.join(commandsPath, file));
+  if (command?.data?.name && command.execute) client.commands.set(command.data.name, command);
+  else console.warn(`⚠️ ${file} missing data or execute()`);
+}
 
 // ==================================================
 // SLASH COMMAND REGISTRATION
@@ -99,10 +86,29 @@ async function registerCommands() {
 }
 
 // ==================================================
+// DATABASE INIT
+// ==================================================
+try {
+  require("./database/db");
+} catch (err) {
+  console.error("❌ Database init failed:", err.message);
+}
+let getUser, addXP, setLevel, getDiscordByGamertag;
+try {
+  ({ getUser, addXP, setLevel } = require("./database/xp"));
+  ({ getDiscordByGamertag } = require("./database/gamertags"));
+} catch (err) {
+  console.error("❌ Database modules not found. Make sure ./database/xp.js and ./database/gamertags.js exist.", err.message);
+}
+
+const { XP, MESSAGE_COOLDOWN, LEVEL_CHANNEL_ID, KILLFEED_CHANNEL_ID } = require("./config");
+const nextXP = lvl => 100 + lvl * 50;
+
+// ==================================================
 // XP HANDLING
 // ==================================================
 function giveXP(userId, amount) {
-  if (!XP || !amount) return;
+  if (!XP || !amount || !getUser || !addXP || !setLevel) return;
   const user = getUser(userId);
   const totalXP = addXP(userId, amount);
 
@@ -141,7 +147,7 @@ client.on("messageCreate", message => {
 
   if (message.channel.id === KILLFEED_CHANNEL_ID) {
     const match = message.content.match(/^(.+?) killed .+$/i);
-    if (match) {
+    if (match && getDiscordByGamertag) {
       const discordId = getDiscordByGamertag(match[1]);
       if (discordId) giveXP(discordId, XP?.KILL || 50);
     }
@@ -149,47 +155,75 @@ client.on("messageCreate", message => {
 });
 
 // ==================================================
-// TICKET INTEGRATION
+// TICKET SYSTEM
 // ==================================================
 const ticketCommand = client.commands.get("ticket");
 
 client.on("interactionCreate", async interaction => {
   try {
-    if (interaction.isButton() && ticketCommand) await ticketCommand.handleButton(interaction);
-    if (interaction.isModalSubmit() && ticketCommand) await ticketCommand.handleModalSubmit(interaction, client);
+    // ---- BUTTONS ----
+    if (interaction.isButton() && ticketCommand) {
+      await ticketCommand.handleButton(interaction);
+    }
+
+    // ---- MODALS ----
+    if (interaction.isModalSubmit() && ticketCommand) {
+      await ticketCommand.handleModalSubmit(interaction, client);
+    }
+
+    // ---- SLASH COMMANDS ----
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (command) await command.execute(interaction);
     }
+
+    // ---- AUTOCOMPLETE ----
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
       if (command?.autocomplete) await command.autocomplete(interaction);
     }
+
+    // ---- STRING SELECT MENUS ----
     if (interaction.isStringSelectMenu()) {
       const [prefix] = interaction.customId.split("_");
       const value = interaction.values[0];
-      const { getEvent } = require("./database/events");
-      if (prefix === "view") {
-        const event = getEvent(value);
-        if (!event) return interaction.update({ content: "❌ Event not found.", components: [] });
+
+      if (prefix === "ticketPriority") {
+        let text, color;
+        switch (value) {
+          case "low": text = "Low Priority selected ✅"; color = 0x3498db; break;
+          case "medium": text = "Medium Priority selected ⚠️"; color = 0xf1c40f; break;
+          case "high": text = "High Priority selected 🔥"; color = 0xe74c3c; break;
+          default: text = "Unknown priority ❌"; color = 0x95a5a6;
+        }
 
         const embed = new EmbedBuilder()
-          .setTitle(`🗂️ Event: ${event.name}`)
-          .setDescription(event.description || "No description provided.")
-          .setColor(0x1abc9c)
+          .setTitle("Ticket Priority Updated")
+          .setDescription(text)
+          .setColor(color)
           .setTimestamp();
 
-        return interaction.update({ embeds: [embed], components: [] });
+        await interaction.update({
+          embeds: [embed],
+          components: [],
+          flags: InteractionResponseFlags.Ephemeral
+        });
       }
     }
+
   } catch (err) {
-    console.error(err);
-    if (!interaction.replied) interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
+    console.error("❌ Interaction handler error:", err);
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: "❌ Something went wrong.",
+        flags: InteractionResponseFlags.Ephemeral
+      });
+    }
   }
 });
 
 // ==================================================
-// ONBOARDING / WELCOME
+// WELCOME / ONBOARDING
 // ==================================================
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || "123456789012345678";
 
@@ -202,7 +236,7 @@ client.on("guildMemberAdd", async member => {
       .setTitle(`Welcome to ${member.guild.name}!`)
       .setDescription(
         `Hey <@${member.id}>! Welcome to **BattleFront Madness**!\n\n` +
-        `📌 Read the rules and guidelines.\n` +
+        `📌 Make sure to read the rules.\n` +
         `🛠️ Need support? Use the /ticket command.\n` +
         `🎮 Check out our events and community channels.\n` +
         `💡 Have fun and enjoy your time here!`
@@ -227,6 +261,7 @@ client.once("ready", async () => {
     const { connectRcon, sendRconCommand } = require("./rconClient");
     await connectRcon();
     console.log("✅ UDP RCON connected");
+
     await sendRconCommand("playerList", 15000);
     console.log("📡 RCON test OK");
   } catch (err) {
