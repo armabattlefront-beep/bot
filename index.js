@@ -3,33 +3,24 @@
 // ==================================================
 require("dotenv").config();
 
-process.on("unhandledRejection", err => console.error("UNHANDLED:", err));
-process.on("uncaughtException", err => console.error("UNCAUGHT:", err));
+process.on("unhandledRejection", (err) => console.error("UNHANDLED:", err));
+process.on("uncaughtException", (err) => console.error("UNCAUGHT:", err));
 
 // ==================================================
 // EXPRESS (KEEP ALIVE)
 // ==================================================
 const express = require("express");
 const app = express();
-
 app.get("/", (_, res) => res.send("BattleFront Madness bot online"));
 app.listen(process.env.PORT || 8080, () => console.log("🌐 Express server running"));
 
 // ==================================================
 // DISCORD CLIENT
 // ==================================================
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  Collection,
-  EmbedBuilder
-} = require("discord.js");
-
+const { Client, GatewayIntentBits, Partials, Collection } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
-const { addXP, getNextLevelXP } = require("./database/xp");
 
 const client = new Client({
   intents: [
@@ -56,105 +47,49 @@ for (const file of fs.readdirSync(commandsPath)) {
 }
 
 // ==================================================
-// XP / LEVEL HANDLING
-// ==================================================
-const messageCooldown = new Set();
-
-function giveXP(userId, amount) {
-  if (!userId || !amount) return;
-
-  const { xp, level } = addXP(userId, amount);
-  const nextLevel = getNextLevelXP(level);
-
-  if (xp >= nextLevel) {
-    const channel = client.channels.cache.get(config.LEVEL_CHANNEL_ID);
-    if (channel) {
-      channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🎉 Level Up!")
-            .setDescription(`<@${userId}> reached **Level ${level + 1}**`)
-            .setColor(0x1abc9c)
-            .setTimestamp()
-        ]
-      }).catch(() => {});
-    }
-  }
-}
-
-client.on("messageCreate", message => {
-  if (!message.guild || message.author.bot) return;
-
-  if (!messageCooldown.has(message.author.id)) {
-    giveXP(message.author.id, config.XP?.MESSAGE || 5);
-    messageCooldown.add(message.author.id);
-    setTimeout(() => messageCooldown.delete(message.author.id), config.MESSAGE_COOLDOWN);
-  }
-});
-
-// ==================================================
 // INTERACTION HANDLER
 // ==================================================
-client.on("interactionCreate", async interaction => {
+client.on("interactionCreate", async (interaction) => {
   try {
-    const ticketCommand = client.commands.get("ticket");
-
-    // ------------------------------
-    // SLASH COMMANDS
-    // ------------------------------
+    // --------- Slash Commands ---------
     if (interaction.isChatInputCommand()) {
-      const command = client.commands.get(interaction.commandName);
-      if (command) await command.execute(interaction);
+      const cmd = client.commands.get(interaction.commandName);
+      if (cmd) await cmd.execute(interaction);
       return;
     }
 
-    // ------------------------------
-    // BUTTONS
-    // ------------------------------
+    // --------- Buttons ---------
     if (interaction.isButton()) {
-      if (!ticketCommand) return;
+      const ticket = client.commands.get("ticket");
+      if (!ticket) return;
 
-      if (interaction.customId.startsWith("ticket_type_")) {
-        await ticketCommand.handleButton(interaction);
-      } else if (interaction.customId.startsWith("ticket_close_")) {
-        await ticketCommand.handleCloseButton(interaction);
+      if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton) {
+        await ticket.handleButton(interaction);
+      } else if (interaction.customId.startsWith("ticket_close_") && ticket.handleCloseButton) {
+        await ticket.handleCloseButton(interaction);
       }
       return;
     }
 
-    // ------------------------------
-    // SELECT MENUS
-    // ------------------------------
+    // --------- Select Menus ---------
     if (interaction.isStringSelectMenu()) {
-      if (!ticketCommand) return;
-
-      if (interaction.customId.startsWith("ticket_priority_")) {
-        await ticketCommand.handlePrioritySelect(interaction);
-      }
+      const ticket = client.commands.get("ticket");
+      if (ticket?.handlePrioritySelect) await ticket.handlePrioritySelect(interaction);
       return;
     }
 
-    // ------------------------------
-    // MODALS
-    // ------------------------------
+    // --------- Modals ---------
     if (interaction.isModalSubmit()) {
-      if (!ticketCommand) return;
-
-      if (interaction.customId.startsWith("ticket_modal_")) {
-        await ticketCommand.handleModalSubmit(interaction, client);
-      }
+      const ticket = client.commands.get("ticket");
+      if (ticket?.handleModalSubmit) await ticket.handleModalSubmit(interaction, client);
       return;
     }
 
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
-
     if (!interaction.replied && !interaction.deferred) {
       try {
-        await interaction.reply({
-          content: "❌ Something went wrong. Please try again or contact staff.",
-          ephemeral: true
-        });
+        await interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
       } catch {}
     }
   }
@@ -163,7 +98,7 @@ client.on("interactionCreate", async interaction => {
 // ==================================================
 // READY
 // ==================================================
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
@@ -173,4 +108,4 @@ client.once("ready", () => {
 if (!process.env.TOKEN) throw new Error("❌ TOKEN not set in .env");
 client.login(process.env.TOKEN);
 
-module.exports = { client, giveXP };
+module.exports = { client };
