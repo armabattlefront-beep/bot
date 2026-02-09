@@ -23,8 +23,7 @@ const {
   GatewayIntentBits,
   Partials,
   Collection,
-  EmbedBuilder,
-  InteractionResponseFlags
+  EmbedBuilder
 } = require("discord.js");
 
 const fs = require("fs");
@@ -98,6 +97,8 @@ client.on("messageCreate", message => {
 // ==================================================
 client.on("interactionCreate", async interaction => {
   try {
+    const ticketCommand = client.commands.get("ticket");
+
     // ------------------------------
     // SLASH COMMANDS
     // ------------------------------
@@ -111,8 +112,13 @@ client.on("interactionCreate", async interaction => {
     // BUTTONS
     // ------------------------------
     if (interaction.isButton()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket?.handleButton) await ticket.handleButton(interaction);
+      if (!ticketCommand) return;
+
+      if (interaction.customId.startsWith("ticket_type_")) {
+        await ticketCommand.handleButton(interaction);
+      } else if (interaction.customId.startsWith("ticket_close_")) {
+        await ticketCommand.handleCloseButton(interaction);
+      }
       return;
     }
 
@@ -120,8 +126,11 @@ client.on("interactionCreate", async interaction => {
     // SELECT MENUS
     // ------------------------------
     if (interaction.isStringSelectMenu()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket?.handlePrioritySelect) await ticket.handlePrioritySelect(interaction);
+      if (!ticketCommand) return;
+
+      if (interaction.customId.startsWith("ticket_priority_")) {
+        await ticketCommand.handlePrioritySelect(interaction);
+      }
       return;
     }
 
@@ -129,8 +138,11 @@ client.on("interactionCreate", async interaction => {
     // MODALS
     // ------------------------------
     if (interaction.isModalSubmit()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket?.handleModalSubmit) await ticket.handleModalSubmit(interaction, client);
+      if (!ticketCommand) return;
+
+      if (interaction.customId.startsWith("ticket_modal_")) {
+        await ticketCommand.handleModalSubmit(interaction, client);
+      }
       return;
     }
 
@@ -141,7 +153,7 @@ client.on("interactionCreate", async interaction => {
       try {
         await interaction.reply({
           content: "❌ Something went wrong. Please try again or contact staff.",
-          flags: InteractionResponseFlags.Ephemeral
+          ephemeral: true
         });
       } catch {}
     }
