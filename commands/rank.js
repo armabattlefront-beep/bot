@@ -1,6 +1,5 @@
-// commands/rank.js
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getUser } = require("../database/xp");
+const { getUser, nextLevelXP } = require("../database/xp"); // adjust path if needed
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,71 +9,38 @@ module.exports = {
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
+
+      // Fetch XP/level from DB, fallback to 0 if missing
       const user = getUser(userId) || { xp: 0, level: 0, prestige: 0 };
 
       const level = Number(user.level) || 0;
       const xp = Number(user.xp) || 0;
-      const nextLevelXP = 100 + level * 50;
-      const progressPercent = Math.floor((xp / nextLevelXP) * 100);
+      const nextXP = nextLevelXP(level);
+      const progressPercent = Math.floor((xp / nextXP) * 100);
 
-      // ----------------------------
-      // Rank calculation
-      // ----------------------------
+      // Military-style rank names
       const rankNames = [
-        "Recruit", "Private", "Corporal", "Sergeant", "Lieutenant",
-        "Captain", "Major", "Colonel", "General", "Field Marshal"
+        "Recruit","Private","Corporal","Sergeant","Lieutenant",
+        "Captain","Major","Colonel","General","Field Marshal"
       ];
-
-      // Rank based on level (every 5 levels progress through names)
       const rankIndex = Math.min(Math.floor(level / 5), rankNames.length - 1);
       const rankName = rankNames[rankIndex];
 
-      const rankEmojis = {
-        0: "🟢", 5: "🔰", 10: "🪖", 20: "🎖️",
-        30: "⭐", 40: "🛡️", 50: "⚔️", 60: "🎖️", 70: "🏆"
-      };
-
-      let rankDisplay = "🟢 Recruit";
-      const sortedLevels = Object.keys(rankEmojis).map(Number).sort((a, b) => a - b);
-      for (const lvl of sortedLevels) {
-        if (level >= lvl) rankDisplay = `${rankEmojis[lvl]} ${rankName}`;
-      }
-
-      // ----------------------------
       // Progress bar
-      // ----------------------------
       const totalBars = 15;
-      const filledBars = Math.floor((xp / nextLevelXP) * totalBars);
+      const filledBars = Math.floor((xp / nextXP) * totalBars);
       const emptyBars = totalBars - filledBars;
+      const barDisplay = "🟩".repeat(filledBars) + "⬜".repeat(emptyBars);
 
-      let barDisplay = "";
-      for (let i = 0; i < filledBars; i++) {
-        if (i < filledBars * 0.3) barDisplay += "🟩";
-        else if (i < filledBars * 0.6) barDisplay += "🟨";
-        else barDisplay += "🟧";
-      }
-      barDisplay += "⬜".repeat(emptyBars);
-
-      // ----------------------------
-      // Prestige & elite badges
-      // ----------------------------
+      // Prestige stars
       const prestigeDisplay = user.prestige ? "✨".repeat(user.prestige) : "";
-      let eliteBadge = "";
-      if (level >= 50) eliteBadge = "🏅";
-      if (level >= 70) eliteBadge = "🎖️🏆";
 
-      // ----------------------------
-      // Embed
-      // ----------------------------
       const embed = new EmbedBuilder()
         .setColor("#00ff99")
         .setTitle(`🎖️ ${interaction.user.username}'s Military ID`)
         .setThumbnail(interaction.user.displayAvatarURL({ extension: "png", size: 256 }))
         .setDescription(
-          `${eliteBadge} ${rankDisplay} ${prestigeDisplay}\n\n` +
-          `Level: **${level}** ${eliteBadge}\n` +
-          `XP: **${xp} / ${nextLevelXP}** (${progressPercent}%)\n\n` +
-          `${barDisplay}`
+          `${rankName} ${prestigeDisplay}\nLevel: **${level}**\nXP: **${xp} / ${nextXP}** (${progressPercent}%)\n${barDisplay}`
         )
         .setFooter({ text: "BattleFront Madness Rank System" });
 
@@ -82,10 +48,7 @@ module.exports = {
 
     } catch (err) {
       console.error("❌ Rank command failed:", err);
-      await interaction.reply({
-        content: "❌ Failed to show rank. Check console for errors.",
-        ephemeral: true
-      });
+      await interaction.reply({ content: "❌ Failed to show rank.", ephemeral: true });
     }
   }
 };
