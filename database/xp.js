@@ -1,17 +1,13 @@
 // database/xp.js
 const db = require("./db");
 
-// -----------------------------
-// DOUBLE XP TOGGLE
-// -----------------------------
+// =============================
+// DOUBLE XP
+// =============================
 let DOUBLE_XP = false;
 
 function toggleDoubleXP(state) {
-  if (typeof state === "boolean") {
-    DOUBLE_XP = state;
-  } else {
-    DOUBLE_XP = !DOUBLE_XP;
-  }
+  DOUBLE_XP = typeof state === "boolean" ? state : !DOUBLE_XP;
   return DOUBLE_XP;
 }
 
@@ -19,10 +15,9 @@ function isDoubleXP() {
   return DOUBLE_XP;
 }
 
-// -----------------------------
-// XP METRICS CONFIG
-// -----------------------------
-// Defines how much XP is awarded per action
+// =============================
+// XP METRICS
+// =============================
 const XP_METRICS = {
   message: 5,
   reaction: 2,
@@ -37,85 +32,90 @@ function getMetrics() {
   return XP_METRICS;
 }
 
-// -----------------------------
-// GET USER
-// -----------------------------
-function getUser(userId) {
-  const row = db.prepare("SELECT * FROM users WHERE userId = ?").get(userId);
-  return row || { userId, xp: 0, level: 0, prestige: 0 };
+// =============================
+// HELPERS
+// =============================
+function nextLevelXP(level) {
+  return 100 + level * 50;
 }
 
-// -----------------------------
+// =============================
+// GET USER
+// =============================
+function getUser(userId) {
+  const user = db.prepare(`
+    SELECT userId, xp, level, prestige
+    FROM users
+    WHERE userId = ?
+  `).get(userId);
+
+  return user || { userId, xp: 0, level: 0, prestige: 0 };
+}
+
+// =============================
 // ADD XP
-// -----------------------------
-function addXP(userId, amount, options = {}) {
+// =============================
+function addXP(userId, amount) {
   if (!userId || typeof amount !== "number") return;
 
   if (DOUBLE_XP) amount *= 2;
 
   let user = getUser(userId);
-
   user.xp += amount;
 
-  // Auto-level up loop
   let leveledUp = false;
+
   while (user.xp >= nextLevelXP(user.level)) {
     user.xp -= nextLevelXP(user.level);
-    user.level += 1;
+    user.level++;
     leveledUp = true;
   }
 
-  // Save to DB
   db.prepare(`
     INSERT INTO users (userId, xp, level, prestige)
     VALUES (?, ?, ?, ?)
-    ON CONFLICT(userId) DO UPDATE SET xp = excluded.xp, level = excluded.level
-  `).run(userId, user.xp, user.level, user.prestige || 0);
+    ON CONFLICT(userId) DO UPDATE SET
+      xp = excluded.xp,
+      level = excluded.level,
+      prestige = excluded.prestige
+  `).run(userId, user.xp, user.level, user.prestige);
 
   return { ...user, leveledUp };
 }
 
-// -----------------------------
-// CALCULATE NEXT LEVEL XP
-// -----------------------------
-function nextLevelXP(level) {
-  // Simple linear: 100 + 50 per level
-  return 100 + level * 50;
-}
-
-// -----------------------------
-// SET LEVEL (ADMIN)
-// -----------------------------
+// =============================
+// ADMIN SET LEVEL
+// =============================
 function setLevel(userId, level) {
-  let user = getUser(userId);
-  if (!user) {
-    db.prepare("INSERT INTO users (userId, xp, level, prestige) VALUES (?, ?, ?, ?)").run(userId, 0, level, 0);
-  } else {
-    db.prepare("UPDATE users SET level = ? WHERE userId = ?").run(level, userId);
-  }
+  db.prepare(`
+    INSERT INTO users (userId, xp, level, prestige)
+    VALUES (?, 0, ?, 0)
+    ON CONFLICT(userId) DO UPDATE SET level = excluded.level
+  `).run(userId, level);
 }
 
-// -----------------------------
-// GET LEADERBOARD
-// -----------------------------
+// =============================
+// LEADERBOARD
+// =============================
 function getLeaderboard(limit = 10) {
   return db.prepare(`
-    SELECT * FROM users
-    ORDER BY level DESC, xp DESC
+    SELECT userId, xp, level, prestige
+    FROM users
+    ORDER BY prestige DESC, level DESC, xp DESC
     LIMIT ?
   `).all(limit);
 }
 
-// -----------------------------
-// RESET USER (ADMIN)
-// -----------------------------
+// =============================
+// RESET USER
+// =============================
 function resetUser(userId) {
-  db.prepare("DELETE FROM users WHERE userId = ?").run(userId);
+  db.prepare(`DELETE FROM users WHERE userId = ?`).run(userId);
 }
 
-// -----------------------------
+// =============================
 // EXPORTS
-// -----------------------------
+// =============================
 module.exports = {
   getUser,
   addXP,
