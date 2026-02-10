@@ -1,6 +1,6 @@
+// commands/leaderboard.js
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const db = require("../database/db");
-const { nextLevelXP } = require("../database/xp");
+const { getLeaderboard, nextLevelXP } = require("../database/xp");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,30 +16,27 @@ module.exports = {
     try {
       const topCount = interaction.options.getInteger("top") || 10;
 
-      // Fetch all users from database
-      const users = db.prepare("SELECT * FROM users").all();
+      const rows = getLeaderboard(topCount);
+      if (!rows.length) {
+        return interaction.reply({ content: "❌ No users found in the database.", ephemeral: true });
+      }
 
-      // Sort by level DESC, xp DESC
-      users.sort((a, b) => b.level - a.level || b.xp - a.xp);
-
-      // Slice top N
-      const topUsers = users.slice(0, topCount);
-
-      // Military-style rank names
       const rankNames = [
         "Recruit","Private","Corporal","Sergeant","Lieutenant",
         "Captain","Major","Colonel","General","Field Marshal"
       ];
 
-      const description = await Promise.all(topUsers.map(async (user, i) => {
-        const rankName = rankNames[Math.min(Math.floor(user.level / 5), rankNames.length - 1)];
+      const description = rows.map((user, i) => {
+        const rankIndex = Math.min(Math.floor(user.level / 5), rankNames.length - 1);
+        const rankName = rankNames[rankIndex];
         const nextXP = nextLevelXP(user.level);
-        return `**${i + 1}. <@${user.userId}>** — ${rankName} | Level ${user.level} | ⭐ ${user.xp} / ${nextXP} XP`;
-      }));
+        const prestigeDisplay = user.prestige ? "✨".repeat(user.prestige) : "";
+        return `**${i + 1}. <@${user.userId}>** — ${rankName} ${prestigeDisplay} | Level ${user.level} | ⭐ ${user.xp} / ${nextXP} XP`;
+      }).join("\n");
 
       const embed = new EmbedBuilder()
         .setTitle("🎖️ BattleFront Leaderboard")
-        .setDescription(description.join("\n"))
+        .setDescription(description)
         .setColor(0x00ff00)
         .setTimestamp();
 

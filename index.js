@@ -21,9 +21,9 @@ const { Client, GatewayIntentBits, Partials, Collection } = require("discord.js"
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
+const db = require("./database/db");
 const { addXP, getMetrics, toggleDoubleXP, isDoubleXP } = require("./database/xp");
 const { getPoll, updatePoll } = require("./database/polls");
-const db = require("./database/db");
 
 const client = new Client({
   intents: [
@@ -52,24 +52,22 @@ for (const file of fs.readdirSync(commandsPath)) {
 // ==================================================
 // XP COOLDOWNS
 // ==================================================
-const messageCooldowns = new Map(); // userId -> timestamp
-const reactionCooldowns = new Map(); // userId -> timestamp
-const voiceTimes = new Map(); // userId -> join timestamp
-const XP = getMetrics();
+const messageCooldowns = new Map();
+const reactionCooldowns = new Map();
+const voiceTimes = new Map();
+const XP = getMetrics(); // XP per action
 
 // ==================================================
 // INTERACTION HANDLER
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
-    // --------- Slash Commands ---------
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction);
       return;
     }
 
-    // --------- Buttons & Polls (unchanged) ---------
     if (interaction.isButton()) {
       const ticket = client.commands.get("ticket");
       if (!ticket) return;
@@ -132,76 +130,18 @@ client.on("interactionCreate", async (interaction) => {
 
         await interaction.update({ embeds: [newEmbed] });
       }
-
-      return;
-    }
-
-    // --------- Modals & Select Menus (unchanged) ---------
-    if (interaction.isModalSubmit() && interaction.customId.startsWith("poll_modal_")) {
-      const msgId = interaction.customId.split("_")[2];
-      const poll = getPoll(msgId);
-      if (!poll) return;
-
-      const customOption = interaction.fields.getTextInputValue("customOption").trim();
-      if (!customOption) return interaction.reply({ content: "❌ Invalid response.", ephemeral: true });
-
-      if (!poll.options.includes(customOption)) {
-        poll.options.push(customOption);
-        poll.votes[customOption] = [interaction.user.id];
-      } else {
-        poll.votes[customOption].push(interaction.user.id);
-      }
-
-      updatePoll(msgId, poll);
-
-      const { ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder } = require("discord.js");
-      const newRow = new ActionRowBuilder();
-      poll.options.forEach((opt, idx) => {
-        newRow.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`poll_option_${idx}_${Date.now()}`)
-            .setLabel(opt)
-            .setStyle(ButtonStyle.Primary)
-        );
-      });
-      if (poll.allowCustom) {
-        newRow.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`poll_custom_${Date.now()}`)
-            .setLabel("Custom Response")
-            .setStyle(ButtonStyle.Secondary)
-        );
-      }
-
-      const channel = await client.channels.fetch(poll.channelId);
-      const pollMsg = await channel.messages.fetch(msgId);
-
-      const newEmbed = new EmbedBuilder()
-        .setTitle(`📊 ${poll.question}`)
-        .setColor(0x3498db)
-        .setFooter({ text: `Poll ends in ${Math.max(0, Math.floor((poll.expires - Date.now()) / 60000))} minutes` })
-        .setTimestamp()
-        .setDescription(
-          poll.options.map(opt => {
-            const count = poll.votes[opt]?.length || 0;
-            return `**${opt}** — ${count} vote${count === 1 ? "" : "s"}`;
-          }).join("\n")
-        );
-
-      await interaction.reply({ content: "✅ Your response has been added!", ephemeral: true });
-      await pollMsg.edit({ embeds: [newEmbed], components: [newRow] });
-      return;
-    }
-
-    if (interaction.isStringSelectMenu()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket?.handlePrioritySelect) await ticket.handlePrioritySelect(interaction);
       return;
     }
 
     if (interaction.isModalSubmit()) {
       const ticket = client.commands.get("ticket");
       if (ticket?.handleModalSubmit) await ticket.handleModalSubmit(interaction, client);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      const ticket = client.commands.get("ticket");
+      if (ticket?.handlePrioritySelect) await ticket.handlePrioritySelect(interaction);
       return;
     }
 
@@ -216,7 +156,7 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 // MESSAGE XP
 // ==================================================
-client.on("messageCreate", (message) => {
+client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (config.SAFE_CHANNELS.includes(message.channel.id)) return;
 
@@ -225,8 +165,8 @@ client.on("messageCreate", (message) => {
   if (now - last < config.MESSAGE_COOLDOWN) return;
   messageCooldowns.set(message.author.id, now);
 
-  // XP always added directly to DB
-  addXP(message.author.id, XP.message);
+  // Add XP directly to DB
+  await addXP(message.author.id, XP.message);
 
   if (message.attachments.size > 0) {
     let bonusXP = 0;
@@ -234,14 +174,14 @@ client.on("messageCreate", (message) => {
       if (att.contentType?.startsWith("image")) bonusXP += XP.image;
       else if (att.contentType?.startsWith("video")) bonusXP += XP.video;
     });
-    if (bonusXP > 0) addXP(message.author.id, bonusXP);
+    if (bonusXP > 0) await addXP(message.author.id, bonusXP);
   }
 });
 
 // ==================================================
 // REACTION XP
 // ==================================================
-client.on("messageReactionAdd", (reaction, user) => {
+client.on("messageReactionAdd", async (reaction, user) => {
   if (user.bot) return;
 
   const now = Date.now();
@@ -249,13 +189,13 @@ client.on("messageReactionAdd", (reaction, user) => {
   if (now - last < 10000) return;
   reactionCooldowns.set(user.id, now);
 
-  addXP(user.id, XP.reaction);
+  await addXP(user.id, XP.reaction);
 });
 
 // ==================================================
 // VOICE XP
 // ==================================================
-client.on("voiceStateUpdate", (oldState, newState) => {
+client.on("voiceStateUpdate", async (oldState, newState) => {
   const member = newState.member;
   if (!member || member.user.bot) return;
   const userId = member.id;
@@ -265,46 +205,38 @@ client.on("voiceStateUpdate", (oldState, newState) => {
     const joinTime = voiceTimes.get(userId);
     if (!joinTime) return;
     const minutes = Math.floor((Date.now() - joinTime) / 60000);
-    if (minutes > 0) addXP(userId, minutes * XP.voiceMinute);
+    if (minutes > 0) await addXP(userId, minutes * XP.voiceMinute);
     voiceTimes.delete(userId);
   }
 });
 
 // ==================================================
-// MEMBER JOIN / LEAVE
-// ==================================================
-client.on("guildMemberAdd", (member) => {
-  if (member.user.bot) return;
-
-  const exists = db.prepare("SELECT 1 FROM users WHERE userId = ?").get(member.id);
-  if (!exists) {
-    db.prepare("INSERT INTO users (userId, xp, level, prestige) VALUES (?, 0, 0, 0)")
-      .run(member.id);
-    console.log(`➕ Added new member ${member.user.tag} (${member.id}) to DB`);
-  }
-});
-
-// ==================================================
-// READY
+// READY + POPULATE MISSING USERS
 // ==================================================
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // Populate DB with all current members
   for (const [guildId, guild] of client.guilds.cache) {
-    await guild.members.fetch();
-    guild.members.cache.forEach(member => {
-      if (member.user.bot) return;
-      const exists = db.prepare("SELECT 1 FROM users WHERE userId = ?").get(member.id);
-      if (!exists) {
-        db.prepare("INSERT INTO users (userId, xp, level, prestige) VALUES (?, 0, 0, 0)")
-          .run(member.id);
-        console.log(`➕ Added missing user ${member.user.tag} (${member.id}) to DB`);
-      }
-    });
+    try {
+      await guild.members.fetch();
+      let addedCount = 0;
+
+      guild.members.cache.forEach(member => {
+        if (member.user.bot) return;
+        const exists = db.prepare("SELECT 1 FROM users WHERE userId = ?").get(member.id);
+        if (!exists) {
+          db.prepare("INSERT INTO users (userId, xp, level, prestige) VALUES (?, 0, 0, 0)").run(member.id);
+          addedCount++;
+        }
+      });
+
+      console.log(`✅ Populated ${addedCount} missing users for guild ${guild.name}`);
+    } catch (err) {
+      console.error(`❌ Failed to populate users for guild ${guild.name}:`, err);
+    }
   }
 
-  console.log("✅ DB fully populated with all guild members.");
+  console.log("✅ DB populated with all guild members.");
 });
 
 // ==================================================

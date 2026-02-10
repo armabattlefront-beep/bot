@@ -1,6 +1,6 @@
+// commands/rank.js
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const db = require("../database/db");
-const { nextLevelXP } = require("../database/xp");
+const { getUser, nextLevelXP } = require("../database/xp");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,16 +10,14 @@ module.exports = {
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
+      const user = getUser(userId);
 
-      // Fetch user directly from DB, fallback to zeros
-      const user = db.prepare("SELECT * FROM users WHERE userId = ?").get(userId) || { xp: 0, level: 0, prestige: 0 };
-
-      const level = Number(user.level) || 0;
-      const xp = Number(user.xp) || 0;
+      const level = Number(user.level);
+      const xp = Number(user.xp);
+      const prestige = Number(user.prestige);
       const nextXP = nextLevelXP(level);
       const progressPercent = Math.floor((xp / nextXP) * 100);
 
-      // Military-style rank names
       const rankNames = [
         "Recruit","Private","Corporal","Sergeant","Lieutenant",
         "Captain","Major","Colonel","General","Field Marshal"
@@ -34,7 +32,7 @@ module.exports = {
       const barDisplay = "🟩".repeat(filledBars) + "⬜".repeat(emptyBars);
 
       // Prestige stars
-      const prestigeDisplay = user.prestige ? "✨".repeat(user.prestige) : "";
+      const prestigeDisplay = prestige ? "✨".repeat(prestige) : "";
 
       const embed = new EmbedBuilder()
         .setColor("#00ff99")
