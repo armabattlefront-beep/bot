@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getUser, nextLevelXP } = require("../database/xp"); // adjust path if needed
+const db = require("../database/db");
+const { nextLevelXP } = require("../database/xp");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,20 +16,14 @@ module.exports = {
     try {
       const topCount = interaction.options.getInteger("top") || 10;
 
-      // Fetch all guild members
-      const members = await interaction.guild.members.fetch();
+      // Fetch all users from database
+      const users = db.prepare("SELECT * FROM users").all();
 
-      // Map each member to XP/level (default 0 if missing)
-      const leaderboard = members.map(member => {
-        const user = getUser(member.id) || { xp: 0, level: 0 };
-        return { userId: member.id, xp: user.xp, level: user.level };
-      });
-
-      // Sort by level then XP
-      leaderboard.sort((a, b) => b.level - a.level || b.xp - a.xp);
+      // Sort by level DESC, xp DESC
+      users.sort((a, b) => b.level - a.level || b.xp - a.xp);
 
       // Slice top N
-      const topUsers = leaderboard.slice(0, topCount);
+      const topUsers = users.slice(0, topCount);
 
       // Military-style rank names
       const rankNames = [
@@ -36,15 +31,15 @@ module.exports = {
         "Captain","Major","Colonel","General","Field Marshal"
       ];
 
-      const description = topUsers.map((user, i) => {
+      const description = await Promise.all(topUsers.map(async (user, i) => {
         const rankName = rankNames[Math.min(Math.floor(user.level / 5), rankNames.length - 1)];
         const nextXP = nextLevelXP(user.level);
         return `**${i + 1}. <@${user.userId}>** — ${rankName} | Level ${user.level} | ⭐ ${user.xp} / ${nextXP} XP`;
-      }).join("\n");
+      }));
 
       const embed = new EmbedBuilder()
         .setTitle("🎖️ BattleFront Leaderboard")
-        .setDescription(description)
+        .setDescription(description.join("\n"))
         .setColor(0x00ff00)
         .setTimestamp();
 

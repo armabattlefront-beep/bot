@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getUser, nextLevelXP } = require("../database/xp"); // adjust path if needed
+const db = require("../database/db");
+const { nextLevelXP } = require("../database/xp");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,8 +11,8 @@ module.exports = {
     try {
       const userId = interaction.user.id;
 
-      // Fetch XP/level from DB, fallback to 0 if missing
-      const user = getUser(userId) || { xp: 0, level: 0, prestige: 0 };
+      // Fetch user directly from DB, fallback to zeros
+      const user = db.prepare("SELECT * FROM users WHERE userId = ?").get(userId) || { xp: 0, level: 0, prestige: 0 };
 
       const level = Number(user.level) || 0;
       const xp = Number(user.xp) || 0;
