@@ -20,14 +20,7 @@ app.listen(process.env.PORT || 8080, () =>
 // ==================================================
 // IMPORTS
 // ==================================================
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  Collection,
-  EmbedBuilder
-} = require("discord.js");
-
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
@@ -49,6 +42,16 @@ const client = new Client({
 });
 
 // ==================================================
+// TOKEN CHECK
+// ==================================================
+if (!process.env.TOKEN) {
+  console.error("❌ BOT TOKEN is missing in .env");
+  process.exit(1);
+} else {
+  console.log("✅ BOT TOKEN found");
+}
+
+// ==================================================
 // COMMAND LOADER
 // ==================================================
 client.commands = new Collection();
@@ -57,12 +60,16 @@ const commandsPath = path.join(__dirname, "commands");
 for (const file of fs.readdirSync(commandsPath)) {
   if (!file.endsWith(".js")) continue;
 
-  const command = require(path.join(commandsPath, file));
-
-  if (command?.data?.name) {
-    client.commands.set(command.data.name, command);
-  } else {
-    console.warn(`⚠️ Command ${file} missing data.name`);
+  try {
+    const command = require(path.join(commandsPath, file));
+    if (command?.data?.name) {
+      client.commands.set(command.data.name, command);
+      console.log(`✅ Loaded command: ${command.data.name}`);
+    } else {
+      console.warn(`⚠️ Command ${file} missing data.name`);
+    }
+  } catch (err) {
+    console.error(`❌ Failed to load command ${file}:`, err);
   }
 }
 
@@ -71,36 +78,24 @@ for (const file of fs.readdirSync(commandsPath)) {
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
-    // =======================
-    // SLASH COMMANDS
-    // =======================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction);
       return;
     }
 
-    // =======================
-    // BUTTONS
-    // =======================
     if (interaction.isButton()) {
       const ticket = client.commands.get("ticket");
 
       if (ticket) {
-        if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton) {
-          await ticket.handleButton(interaction);
-          return;
-        }
+        if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton)
+          return ticket.handleButton(interaction);
 
-        if (interaction.customId === "ticket_close" && ticket.handleCloseButton) {
-          await ticket.handleCloseButton(interaction);
-          return;
-        }
+        if (interaction.customId === "ticket_close" && ticket.handleCloseButton)
+          return ticket.handleCloseButton(interaction);
       }
 
-      // =======================
-      // POLL BUTTONS
-      // =======================
+      // Poll buttons
       if (
         interaction.customId.startsWith("poll_option_") ||
         interaction.customId.startsWith("poll_custom_")
@@ -109,15 +104,8 @@ client.on("interactionCreate", async (interaction) => {
         const poll = polls.getPoll(msgId);
         if (!poll) return;
 
-        // Custom option modal
         if (interaction.customId.startsWith("poll_custom")) {
-          const {
-            ModalBuilder,
-            ActionRowBuilder,
-            TextInputBuilder,
-            TextInputStyle
-          } = require("discord.js");
-
+          const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
           const modal = new ModalBuilder()
             .setCustomId(`poll_modal_${msgId}_${Date.now()}`)
             .setTitle("Submit a Custom Poll Response")
@@ -131,9 +119,7 @@ client.on("interactionCreate", async (interaction) => {
                   .setRequired(true)
               )
             );
-
-          await interaction.showModal(modal);
-          return;
+          return interaction.showModal(modal);
         }
 
         // Normal vote
@@ -141,11 +127,8 @@ client.on("interactionCreate", async (interaction) => {
         const option = poll.options[index];
         if (!option) return;
 
-        // Remove previous votes
         for (const opt of Object.keys(poll.votes)) {
-          poll.votes[opt] = poll.votes[opt].filter(
-            (uid) => uid !== interaction.user.id
-          );
+          poll.votes[opt] = poll.votes[opt].filter((uid) => uid !== interaction.user.id);
         }
 
         poll.votes[option].push(interaction.user.id);
@@ -155,10 +138,7 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`📊 ${poll.question}`)
           .setColor(0x3498db)
           .setFooter({
-            text: `Poll ends in ${Math.max(
-              0,
-              Math.floor((poll.expires - Date.now()) / 60000)
-            )} minutes`
+            text: `Poll ends in ${Math.max(0, Math.floor((poll.expires - Date.now()) / 60000))} minutes`
           })
           .setTimestamp()
           .setDescription(
@@ -170,40 +150,26 @@ client.on("interactionCreate", async (interaction) => {
               .join("\n")
           );
 
-        await interaction.update({ embeds: [newEmbed] });
-        return;
+        return interaction.update({ embeds: [newEmbed] });
       }
     }
 
-    // =======================
-    // MODALS
-    // =======================
     if (interaction.isModalSubmit()) {
       const ticket = client.commands.get("ticket");
-      if (ticket?.handleModalSubmit)
-        await ticket.handleModalSubmit(interaction, client);
+      if (ticket?.handleModalSubmit) return ticket.handleModalSubmit(interaction, client);
       return;
     }
 
-    // =======================
-    // SELECT MENUS
-    // =======================
     if (interaction.isStringSelectMenu()) {
       const ticket = client.commands.get("ticket");
-      if (ticket?.handlePrioritySelect)
-        await ticket.handlePrioritySelect(interaction);
+      if (ticket?.handlePrioritySelect) return ticket.handlePrioritySelect(interaction);
       return;
     }
-
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
-
     if (!interaction.replied && !interaction.deferred) {
       try {
-        await interaction.reply({
-          content: "❌ Something went wrong.",
-          ephemeral: true
-        });
+        await interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
       } catch {}
     }
   }
@@ -215,7 +181,6 @@ client.on("interactionCreate", async (interaction) => {
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // Start poll auto-close loop
   polls.init(client);
 
   console.log("✅ Poll system initialised.");
@@ -224,9 +189,8 @@ client.once("ready", () => {
 // ==================================================
 // LOGIN
 // ==================================================
-if (!process.env.TOKEN)
-  throw new Error("❌ TOKEN not set in .env");
-
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN)
+  .then(() => console.log("🔑 Login attempt sent"))
+  .catch((err) => console.error("❌ Failed to login:", err));
 
 module.exports = { client };
