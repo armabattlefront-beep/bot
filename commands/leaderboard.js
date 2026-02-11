@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getLeaderboard } = require("../database/xpEngine");
+const { getLeaderboardData } = require("../database/xpEngine");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -13,10 +13,14 @@ module.exports = {
 
   async execute(interaction) {
     const limit = interaction.options.getInteger("top") || 10;
-    const leaderboard = getLeaderboard(limit);
 
-    if (!leaderboard || leaderboard.length === 0)
+    // Fetch leaderboard data
+    const leaderboard = await getLeaderboardData(limit); 
+    // Returns [{ id, xp, level, prestige }, ...]
+
+    if (!leaderboard || leaderboard.length === 0) {
       return interaction.reply({ content: "No XP data yet.", ephemeral: true });
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("🏆 BattleFront Leaderboard")
@@ -28,6 +32,6 @@ module.exports = {
         }).join("\n")
       );
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: false });
   }
 };

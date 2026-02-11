@@ -1,32 +1,52 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { setXP } = require("../database/xpEngine");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { setUserXPData, getUserXPData } = require("../database/xpEngine");
 const config = require("../config");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("editxp")
-    .setDescription("Staff: Set a user's XP to a specific amount")
+    .setDescription("Staff: Edit a user's XP or level directly")
     .addUserOption(option =>
       option.setName("target")
-        .setDescription("The user to edit")
+        .setDescription("User to edit")
         .setRequired(true)
     )
     .addIntegerOption(option =>
-      option.setName("amount")
-        .setDescription("XP amount")
-        .setRequired(true)
+      option.setName("xp")
+        .setDescription("Set XP amount")
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option.setName("level")
+        .setDescription("Set level")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
-    if (!interaction.member.roles.cache.some(r => Object.values(config.STAFF_ROLE_IDS).includes(r.id)))
-      return interaction.reply({ content: "❌ You do not have permission.", ephemeral: true });
+    // Staff check
+    if (!interaction.member.roles.cache.some(r => Object.values(config.STAFF_ROLE_IDS).includes(r.id))) {
+      return interaction.reply({ content: "❌ You do not have permission to edit XP.", ephemeral: true });
+    }
 
-    const target = interaction.options.getUser("target");
-    const amount = interaction.options.getInteger("amount");
+    const user = interaction.options.getUser("target");
+    const xp = interaction.options.getInteger("xp");
+    const level = interaction.options.getInteger("level");
 
-    if (amount < 0) return interaction.reply({ content: "❌ XP cannot be negative.", ephemeral: true });
+    await setUserXPData(user.id, { xp, level });
 
-    setXP(target.id, amount);
-    await interaction.reply({ content: `✅ Set <@${target.id}>'s XP to **${amount}**.` });
+    const xpData = await getUserXPData(user.id);
+
+    const embed = new EmbedBuilder()
+      .setTitle(`⚙️ XP Edited`)
+      .setDescription(`Updated XP for <@${user.id}>`)
+      .addFields(
+        { name: "Level", value: `${xpData.level}`, inline: true },
+        { name: "XP", value: `${xpData.xp}`, inline: true },
+        { name: "Prestige", value: `${xpData.prestige}`, inline: true }
+      )
+      .setColor(0xe67e22)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
   }
 };
