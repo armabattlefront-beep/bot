@@ -1,7 +1,7 @@
 // xp/xpEngine.js
-const { getUser, updateUser, logXP } = require("../database/xp");
-const { getGlobalMultiplier } = require("../database/xpSettings");
-const { xpRequiredForLevel, calculateLevelFromXP, MAX_LEVEL } = require("./levelCurve");
+const { getUser, updateUser, logXP } = require("./xp");
+const { getGlobalMultiplier } = require("./xpSettings");
+const { xpRequiredForLevel, calculateLevelFromXP, MAX_LEVEL } = require("../xp/levelCurve");
 
 function prestigeMultiplier(prestige) {
   return 1 + (prestige * 0.05);
