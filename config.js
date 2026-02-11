@@ -1,23 +1,11 @@
 module.exports = {
     // =========================
-    // XP SYSTEM
-    // =========================
-    XP: {
-        MESSAGE: parseInt(process.env.XP_MESSAGE || "5", 10),
-        REACTION: parseInt(process.env.XP_REACTION || "3", 10),
-        VOICE_PER_MINUTE: parseInt(process.env.XP_VOICE_PER_MINUTE || "2", 10)
-    },
-
-    LEVEL_XP: parseInt(process.env.LEVEL_XP || "100", 10),
-    MESSAGE_COOLDOWN: parseInt(process.env.MESSAGE_COOLDOWN || "60000", 10),
-
-    // =========================
     // CHANNELS
     // =========================
-    LEVEL_CHANNEL_ID: process.env.LEVEL_CHANNEL_ID || "1373687876268724254",
     SAFE_CHANNELS: process.env.SAFE_CHANNELS
         ? process.env.SAFE_CHANNELS.split(",")
         : ["1332754586179473632", "1332753537456803851", "1435659408783708161"],
+
     MOD_LOG_CHANNEL: process.env.MOD_LOG_CHANNEL || "1463209423907455057",
     LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "123456789012345678",
 
@@ -34,7 +22,7 @@ module.exports = {
     // =========================
     // TICKET SYSTEM
     // =========================
-    TICKET_BOARD_CHANNEL: "1470416063476007044", // <-- NEW Text channel ID
+    TICKET_BOARD_CHANNEL: "1470416063476007044",
 
     // =========================
     // WELCOME / ONBOARDING
