@@ -9,9 +9,6 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, "tickets.db");
 const db = new Database(DB_PATH);
 
-// -----------------------------
-// CREATE TABLE IF NOT EXISTS
-// -----------------------------
 db.prepare(`
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
@@ -29,27 +26,18 @@ db.prepare(`
   )
 `).run();
 
-// -----------------------------
-// HELPERS
-// -----------------------------
 function generateTicketId(userId) {
   return `${Date.now()}_${userId}_${Math.floor(Math.random() * 1000)}`;
 }
 
-// -----------------------------
-// ADD TICKET
-// -----------------------------
 function addTicket(ticket) {
-  if (!ticket.id) ticket.id = generateTicketId(ticket.creatorId);
   const now = Date.now();
 
-  const stmt = db.prepare(`
+  db.prepare(`
     INSERT INTO tickets
-      (id, creatorId, type, priority, status, threadId, messageId, channelId, createdAt, updatedAt, details, attachments)
+    (id, creatorId, type, priority, status, threadId, messageId, channelId, createdAt, updatedAt, details, attachments)
     VALUES (@id,@creatorId,@type,@priority,@status,@threadId,@messageId,@channelId,@createdAt,@updatedAt,@details,@attachments)
-  `);
-
-  stmt.run({
+  `).run({
     ...ticket,
     createdAt: ticket.createdAt || now,
     updatedAt: ticket.updatedAt || now
@@ -58,15 +46,13 @@ function addTicket(ticket) {
   return ticket.id;
 }
 
-// -----------------------------
-// UPDATE TICKET
-// -----------------------------
 function updateTicket(id, updates) {
   const existing = getTicket(id);
   if (!existing) return false;
 
   const merged = { ...existing, ...updates, updatedAt: Date.now() };
-  const stmt = db.prepare(`
+
+  db.prepare(`
     UPDATE tickets SET
       type=@type,
       priority=@priority,
@@ -78,47 +64,29 @@ function updateTicket(id, updates) {
       attachments=@attachments,
       updatedAt=@updatedAt
     WHERE id=@id
-  `);
-  stmt.run(merged);
+  `).run(merged);
+
   return true;
 }
 
-// -----------------------------
-// CLOSE TICKET
-// -----------------------------
-function closeTicket(id) {
-  return updateTicket(id, { status: "closed" });
-}
-
-// -----------------------------
-// GET TICKET
-// -----------------------------
-// Supports lookup by ticket id OR messageId
 function getTicket(identifier) {
   let ticket = db.prepare("SELECT * FROM tickets WHERE id = ?").get(identifier);
-  if (!ticket) ticket = db.prepare("SELECT * FROM tickets WHERE messageId = ?").get(identifier);
+  if (!ticket)
+    ticket = db.prepare("SELECT * FROM tickets WHERE messageId = ?").get(identifier);
   return ticket;
 }
 
-// -----------------------------
-// GET ALL TICKETS
-// -----------------------------
 function getAllTickets() {
   return db.prepare("SELECT * FROM tickets").all();
 }
 
-// -----------------------------
-// DELETE TICKET
-// -----------------------------
 function deleteTicket(id) {
   return db.prepare("DELETE FROM tickets WHERE id = ?").run(id);
 }
 
-// -----------------------------
 module.exports = {
   addTicket,
   updateTicket,
-  closeTicket,
   getTicket,
   getAllTickets,
   deleteTicket,
