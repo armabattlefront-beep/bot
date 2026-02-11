@@ -1,10 +1,6 @@
+// commands/rank.js
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const {
-  getUserXPData,
-  getUserLevel,
-  getUserPrestige,
-  getRankCard
-} = require("../database/xpEngine");
+const { getUserXPData, getRankCardURL } = require("../database/xpEngine");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -19,30 +15,32 @@ module.exports = {
   async execute(interaction) {
     const user = interaction.options.getUser("target") || interaction.user;
 
-    // Get all XP-related data
-    const xpData = await getUserXPData(user.id); // returns { xp, level, prestige, nextLevelXP }
-    const level = xpData.level;
-    const prestige = xpData.prestige;
-    const xp = xpData.xp;
-    const xpToNext = xpData.nextLevelXP - xp;
+    // Fetch all XP/Level/Prestige data in one call
+    const xpData = getUserXPData(user.id);
+    if (!xpData) {
+      return interaction.reply({
+        content: `❌ No XP data found for <@${user.id}>.`,
+        ephemeral: true
+      });
+    }
 
-    // Build embed
+    const { xp, level, prestige, nextLevelXP } = xpData;
+
     const embed = new EmbedBuilder()
       .setTitle(`🎖️ BattleFront Rank Card: ${user.tag}`)
       .setColor(0x1abc9c)
       .addFields(
         { name: "Level", value: `${level}`, inline: true },
         { name: "Prestige", value: `${prestige}`, inline: true },
-        { name: "XP", value: `${xp} XP`, inline: true },
-        { name: "XP to Next Level", value: `${xpToNext} XP`, inline: true }
+        { name: "XP", value: `${xp} / ${nextLevelXP}`, inline: true }
       )
       .setFooter({ text: "Earn XP by chatting, reacting, playing, and more!" })
       .setTimestamp();
 
-    // Attach dynamic rank card image
-    const cardURL = await getRankCard(user.id);
-    if (cardURL) embed.setImage(cardURL);
+    // Optional: attach dynamic rank card image
+    const rankCardURL = getRankCardURL(user.id);
+    if (rankCardURL) embed.setImage(rankCardURL);
 
-    await interaction.reply({ embeds: [embed], ephemeral: false });
+    await interaction.reply({ embeds: [embed] });
   }
 };
