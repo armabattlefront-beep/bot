@@ -95,7 +95,6 @@ client.on("interactionCreate", async (interaction) => {
           return ticket.handleCloseButton(interaction);
       }
 
-      // Poll buttons
       if (
         interaction.customId.startsWith("poll_option_") ||
         interaction.customId.startsWith("poll_custom_")
@@ -104,25 +103,6 @@ client.on("interactionCreate", async (interaction) => {
         const poll = polls.getPoll(msgId);
         if (!poll) return;
 
-        if (interaction.customId.startsWith("poll_custom")) {
-          const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
-          const modal = new ModalBuilder()
-            .setCustomId(`poll_modal_${msgId}_${Date.now()}`)
-            .setTitle("Submit a Custom Poll Response")
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("customOption")
-                  .setLabel("Your Option")
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder("Type your response here")
-                  .setRequired(true)
-              )
-            );
-          return interaction.showModal(modal);
-        }
-
-        // Normal vote
         const index = parseInt(interaction.customId.split("_")[2]);
         const option = poll.options[index];
         if (!option) return;
@@ -153,18 +133,6 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.update({ embeds: [newEmbed] });
       }
     }
-
-    if (interaction.isModalSubmit()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket?.handleModalSubmit) return ticket.handleModalSubmit(interaction, client);
-      return;
-    }
-
-    if (interaction.isStringSelectMenu()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket?.handlePrioritySelect) return ticket.handlePrioritySelect(interaction);
-      return;
-    }
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
     if (!interaction.replied && !interaction.deferred) {
@@ -180,9 +148,7 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-
   polls.init(client);
-
   console.log("✅ Poll system initialised.");
 });
 
