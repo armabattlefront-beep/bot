@@ -23,7 +23,6 @@ app.listen(process.env.PORT || 8080, () =>
 const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const config = require("./config");
 const polls = require("./database/polls");
 
 // ==================================================
@@ -42,13 +41,15 @@ const client = new Client({
 });
 
 // ==================================================
-// TOKEN CHECK
+// TOKEN CHECK & DEBUG
 // ==================================================
-if (!process.env.TOKEN) {
-  console.error("❌ BOT TOKEN is missing in .env");
+const BOT_TOKEN = process.env.TOKEN;
+
+if (!BOT_TOKEN) {
+  console.error("❌ BOT TOKEN is missing in .env or not passed to the container");
   process.exit(1);
 } else {
-  console.log("✅ BOT TOKEN found");
+  console.log("✅ BOT TOKEN found in environment");
 }
 
 // ==================================================
@@ -155,7 +156,11 @@ client.once("ready", () => {
 // ==================================================
 // LOGIN
 // ==================================================
-client.login(process.env.TOKEN)
+
+// Debug: check token length
+console.log("DEBUG: TOKEN length =", BOT_TOKEN.length);
+
+client.login(BOT_TOKEN)
   .then(() => console.log("🔑 Login attempt sent"))
   .catch((err) => console.error("❌ Failed to login:", err));
 
