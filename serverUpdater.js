@@ -2,26 +2,16 @@
 const Gamedig = require("gamedig");
 const { client } = require("./index");
 
-// List all servers you want to track
-// Add as many as you like
+// Single server configuration based on your info
 const servers = [
   {
-    name: "BattleFront Madness",
+    name: "BattleFront Madness Server 1",
     ip: "136.243.133.169",
-    port: 3002,   // A2S port
+    port: 3002, // A2S port
     maxPlayers: 128,
-    categoryName: "BattleFront Madness Servers",
+    categoryName: "BattleData",
     refreshInterval: 30_000, // 30 seconds
   },
-  // Example for future servers:
-  // {
-  //   name: "Second Server",
-  //   ip: "OTHER_IP",
-  //   port: 2303,
-  //   maxPlayers: 64,
-  //   categoryName: "BattleFront Madness Servers",
-  //   refreshInterval: 45_000,
-  // },
 ];
 
 async function initServerUpdater() {
@@ -38,6 +28,7 @@ async function initServerUpdater() {
           type: 4,
           reason: "Server updater category",
         });
+        console.log(`✅ Created category: ${srv.categoryName}`);
       }
 
       // Ensure text channel exists
@@ -47,14 +38,15 @@ async function initServerUpdater() {
 
       if (!channel) {
         channel = await client.guilds.cache.first().channels.create({
-          name: `${srv.name} 0/${srv.maxPlayers}`,
+          name: `${srv.name} (0/${srv.maxPlayers})`,
           type: 0, // 0 = text channel
           parent: category.id,
           reason: "Playerlist updater channel",
         });
+        console.log(`✅ Created channel: ${channel.name}`);
       }
 
-      // Function to update channel safely
+      // Function to update the channel safely
       const updateChannel = async () => {
         try {
           const state = await Gamedig.query({
@@ -63,22 +55,20 @@ async function initServerUpdater() {
             port: srv.port,
           });
 
+          const playerCount = state.players.length;
           const playerNames =
             state.players.map((p) => p.name).join(", ") || "No players online";
 
-          const channelName = `${state.name} (${state.players.length}/${srv.maxPlayers})`;
+          const newChannelName = `${srv.name} (${playerCount}/${srv.maxPlayers})`;
 
-          if (channel.name !== channelName) {
-            await channel.setName(channelName, "Updating player count");
+          if (channel.name !== newChannelName) {
+            await channel.setName(newChannelName, "Updating player count");
           }
 
           await channel.setTopic(playerNames);
 
         } catch (err) {
-          console.log(
-            `⚠️ Failed to query server "${srv.name}":`,
-            err.message
-          );
+          console.log(`⚠️ Failed to query server "${srv.name}":`, err.message);
         }
       };
 

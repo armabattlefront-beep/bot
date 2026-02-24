@@ -20,13 +20,7 @@ app.listen(process.env.PORT || 8080, () =>
 // ==================================================
 // IMPORTS
 // ==================================================
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  Collection,
-  EmbedBuilder,
-} = require("discord.js");
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const polls = require("./database/polls");
@@ -42,9 +36,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.Reaction],
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction]
 });
 
 // ==================================================
@@ -84,12 +78,14 @@ for (const file of fs.readdirSync(commandsPath)) {
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
+    // Chat commands
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction);
       return;
     }
 
+    // Buttons (ticket system)
     if (interaction.isButton()) {
       const ticket = client.commands.get("ticket");
 
@@ -110,26 +106,6 @@ client.on("interactionCreate", async (interaction) => {
         const poll = polls.getPoll(msgId);
         if (!poll) return;
 
-        if (interaction.customId.startsWith("poll_custom")) {
-          const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } =
-            require("discord.js");
-          const modal = new ModalBuilder()
-            .setCustomId(`poll_modal_${msgId}_${Date.now()}`)
-            .setTitle("Submit a Custom Poll Response")
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("customOption")
-                  .setLabel("Your Option")
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder("Type your response here")
-                  .setRequired(true)
-              )
-            );
-          return interaction.showModal(modal);
-        }
-
-        // Normal vote
         const index = parseInt(interaction.customId.split("_")[2]);
         const option = poll.options[index];
         if (!option) return;
@@ -145,10 +121,7 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`📊 ${poll.question}`)
           .setColor(0x3498db)
           .setFooter({
-            text: `Poll ends in ${Math.max(
-              0,
-              Math.floor((poll.expires - Date.now()) / 60000)
-            )} minutes`,
+            text: `Poll ends in ${Math.max(0, Math.floor((poll.expires - Date.now()) / 60000))} minutes`
           })
           .setTimestamp()
           .setDescription(
@@ -176,13 +149,16 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 // READY
 // ==================================================
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
+
+  // Initialize poll system
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Start the A2S server updater (multi-server safe)
-  initServerUpdater();
+  // Initialize server updater
+  await initServerUpdater();
+  console.log("✅ Server updater initialised.");
 });
 
 // ==================================================
