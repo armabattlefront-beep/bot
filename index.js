@@ -23,7 +23,6 @@ app.listen(process.env.PORT || 8080, () =>
 const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const config = require("./config");
 const polls = require("./database/polls");
 const { initServerUpdater } = require("./serverUpdater");
 
@@ -87,51 +86,12 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isButton()) {
       const ticket = client.commands.get("ticket");
-
       if (ticket) {
         if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton)
           return ticket.handleButton(interaction);
 
         if (interaction.customId === "ticket_close" && ticket.handleCloseButton)
           return ticket.handleCloseButton(interaction);
-      }
-
-      if (
-        interaction.customId.startsWith("poll_option_") ||
-        interaction.customId.startsWith("poll_custom_")
-      ) {
-        const msgId = interaction.message.id;
-        const poll = polls.getPoll(msgId);
-        if (!poll) return;
-
-        const index = parseInt(interaction.customId.split("_")[2]);
-        const option = poll.options[index];
-        if (!option) return;
-
-        for (const opt of Object.keys(poll.votes)) {
-          poll.votes[opt] = poll.votes[opt].filter((uid) => uid !== interaction.user.id);
-        }
-
-        poll.votes[option].push(interaction.user.id);
-        polls.updatePoll(msgId, poll);
-
-        const newEmbed = new EmbedBuilder()
-          .setTitle(`📊 ${poll.question}`)
-          .setColor(0x3498db)
-          .setFooter({
-            text: `Poll ends in ${Math.max(0, Math.floor((poll.expires - Date.now()) / 60000))} minutes`
-          })
-          .setTimestamp()
-          .setDescription(
-            poll.options
-              .map((opt) => {
-                const count = poll.votes[opt]?.length || 0;
-                return `**${opt}** — ${count} vote${count === 1 ? "" : "s"}`;
-              })
-              .join("\n")
-          );
-
-        return interaction.update({ embeds: [newEmbed] });
       }
     }
   } catch (err) {
@@ -147,20 +107,14 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 // READY
 // ==================================================
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-
-  // Initialize poll system
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Initialize server updater (pass client to avoid circular dependency)
-  try {
-    await initServerUpdater(client);
-    console.log("✅ Server updater initialised.");
-  } catch (err) {
-    console.error("❌ Failed to initialise server updater:", err);
-  }
+  // Initialize the Arma Reforger server updater
+  await initServerUpdater(client);
+  console.log("✅ Server updater initialised.");
 });
 
 // ==================================================

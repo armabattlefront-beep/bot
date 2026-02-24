@@ -1,84 +1,88 @@
 // serverUpdater.js
-const { Client } = require("discord.js");
-const { Rcon } = require("arma-reforger-rcon");
-const { client } = require("./index");
+const WebSocket = require("ws");
 
-const GUILD_ID = "1332753531764998265"; // Your Discord server ID
-const CATEGORY_NAME = "BattleData";
-const SERVER_NAME = "BattleFront Madness Server 1";
-const MAX_PLAYERS = 128;
+// Your server configuration
+const serverConfig = {
+  guildId: "1332753531764998265", // Discord server ID
+  categoryName: "BattleData",
+  serverName: "BattleFront Madness Server 1",
+  ip: "136.243.133.169",
+  rconPort: 3002,
+  rconPassword: process.env.REFORGER_RCON, // set this in .env
+  maxPlayers: 128,
+  refreshInterval: 30_000 // 30 seconds
+};
 
-const RCON_HOST = process.env.RCON_HOST;
-const RCON_PORT = parseInt(process.env.RCON_PORT, 10);
-const RCON_PASSWORD = process.env.RCON_PASSWORD;
-
-async function initServerUpdater() {
+async function initServerUpdater(client) {
   try {
-    const guild = client.guilds.cache.get(GUILD_ID);
-    if (!guild) return console.error("❌ Guild not found");
+    const guild = await client.guilds.fetch(serverConfig.guildId);
+    if (!guild) throw new Error("Guild not found");
 
-    // Ensure category exists
+    // Create or fetch category
     let category = guild.channels.cache.find(
-      (c) => c.name === CATEGORY_NAME && c.type === 4
+      (c) => c.name === serverConfig.categoryName && c.type === 4
     );
+
     if (!category) {
       category = await guild.channels.create({
-        name: CATEGORY_NAME,
-        type: 4, // Category
-        reason: "Server updater category",
+        name: serverConfig.categoryName,
+        type: 4,
+        reason: "Server updater category"
       });
     }
 
-    // Ensure channel exists
+    // Create or fetch text channel
     let channel = guild.channels.cache.find(
-      (c) => c.parentId === category.id && c.name.startsWith(SERVER_NAME)
+      (c) => c.parentId === category.id && c.name.startsWith(serverConfig.serverName)
     );
+
     if (!channel) {
       channel = await guild.channels.create({
-        name: `${SERVER_NAME} 0/${MAX_PLAYERS}`,
+        name: `${serverConfig.serverName} 0/${serverConfig.maxPlayers}`,
         type: 0, // Text channel
         parent: category.id,
-        reason: "Playerlist updater channel",
+        reason: "Playerlist updater channel"
       });
     }
 
-    // Connect to RCON
-    const rcon = new Rcon({
-      host: RCON_HOST,
-      port: RCON_PORT,
-      password: RCON_PASSWORD,
+    // Connect to Reforger RCON via WebSocket
+    const ws = new WebSocket(`ws://${serverConfig.ip}:${serverConfig.rconPort}`);
+
+    ws.on("open", () => {
+      console.log("🌐 Connected to Reforger RCON");
+      ws.send(JSON.stringify({ type: "auth", password: serverConfig.rconPassword }));
     });
 
-    await rcon.connect();
-    console.log("✅ Connected to Arma Reforger RCON");
-
-    let lastPlayerList = [];
-    let lastPlayerCount = -1;
-
-    const updateChannel = async () => {
+    ws.on("message", async (data) => {
       try {
-        const players = await rcon.getPlayers(); // Returns array of { name, id, ... }
-        const currentCount = players.length;
-        const playerNames = players.map((p) => p.name).join(", ") || "No players online";
+        const msg = JSON.parse(data);
+        if (msg.type === "auth_response" && msg.success) {
+          console.log("✅ RCON authenticated");
+        }
 
-        // Only update if there’s a change
-        if (currentCount !== lastPlayerCount || playerNames !== lastPlayerList.join(", ")) {
-          lastPlayerCount = currentCount;
-          lastPlayerList = players.map((p) => p.name);
+        // Example: receive player list updates from RCON
+        if (msg.type === "player_list") {
+          const playerCount = msg.players.length;
+          const playerNames = msg.players.map(p => p.name).join(", ") || "No players online";
 
-          const channelName = `${SERVER_NAME} (${currentCount}/${MAX_PLAYERS})`;
-          if (channel.name !== channelName) await channel.setName(channelName, "Updating player count");
-
+          // Update channel name & topic
+          await channel.setName(`${serverConfig.serverName} (${playerCount}/${serverConfig.maxPlayers})`);
           await channel.setTopic(playerNames);
         }
       } catch (err) {
-        console.error("⚠️ Failed to query server:", err.message);
+        console.error("⚠️ Failed to process RCON message:", err);
       }
-    };
+    });
 
-    // Run immediately, then every 30s
-    updateChannel();
-    setInterval(updateChannel, 30_000);
+    ws.on("error", (err) => console.error("❌ RCON connection error:", err));
+    ws.on("close", () => console.log("ℹ️ RCON connection closed"));
+
+    // Optional: request player list periodically
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "get_players" }));
+      }
+    }, serverConfig.refreshInterval);
 
   } catch (err) {
     console.error("❌ Failed to initialise server updater:", err);
