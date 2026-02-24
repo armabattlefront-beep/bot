@@ -20,10 +20,17 @@ app.listen(process.env.PORT || 8080, () =>
 // ==================================================
 // IMPORTS
 // ==================================================
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  Collection,
+  EmbedBuilder,
+} = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const polls = require("./database/polls");
+const { initServerUpdater } = require("./serverUpdater");
 
 // ==================================================
 // DISCORD CLIENT
@@ -35,21 +42,19 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.Reaction]
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
 
 // ==================================================
-// TOKEN CHECK & DEBUG
+// TOKEN CHECK
 // ==================================================
-const BOT_TOKEN = process.env.TOKEN;
-
-if (!BOT_TOKEN) {
-  console.error("❌ BOT TOKEN is missing in .env or not passed to the container");
+if (!process.env.TOKEN) {
+  console.error("❌ BOT TOKEN is missing in .env");
   process.exit(1);
 } else {
-  console.log("✅ BOT TOKEN found in environment");
+  console.log("✅ BOT TOKEN found");
 }
 
 // ==================================================
@@ -96,6 +101,7 @@ client.on("interactionCreate", async (interaction) => {
           return ticket.handleCloseButton(interaction);
       }
 
+      // Poll buttons
       if (
         interaction.customId.startsWith("poll_option_") ||
         interaction.customId.startsWith("poll_custom_")
@@ -104,6 +110,26 @@ client.on("interactionCreate", async (interaction) => {
         const poll = polls.getPoll(msgId);
         if (!poll) return;
 
+        if (interaction.customId.startsWith("poll_custom")) {
+          const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } =
+            require("discord.js");
+          const modal = new ModalBuilder()
+            .setCustomId(`poll_modal_${msgId}_${Date.now()}`)
+            .setTitle("Submit a Custom Poll Response")
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("customOption")
+                  .setLabel("Your Option")
+                  .setStyle(TextInputStyle.Short)
+                  .setPlaceholder("Type your response here")
+                  .setRequired(true)
+              )
+            );
+          return interaction.showModal(modal);
+        }
+
+        // Normal vote
         const index = parseInt(interaction.customId.split("_")[2]);
         const option = poll.options[index];
         if (!option) return;
@@ -119,7 +145,10 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`📊 ${poll.question}`)
           .setColor(0x3498db)
           .setFooter({
-            text: `Poll ends in ${Math.max(0, Math.floor((poll.expires - Date.now()) / 60000))} minutes`
+            text: `Poll ends in ${Math.max(
+              0,
+              Math.floor((poll.expires - Date.now()) / 60000)
+            )} minutes`,
           })
           .setTimestamp()
           .setDescription(
@@ -151,16 +180,15 @@ client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   polls.init(client);
   console.log("✅ Poll system initialised.");
+
+  // Start the A2S server updater (multi-server safe)
+  initServerUpdater();
 });
 
 // ==================================================
 // LOGIN
 // ==================================================
-
-// Debug: check token length
-console.log("DEBUG: TOKEN length =", BOT_TOKEN.length);
-
-client.login(BOT_TOKEN)
+client.login(process.env.TOKEN)
   .then(() => console.log("🔑 Login attempt sent"))
   .catch((err) => console.error("❌ Failed to login:", err));
 
