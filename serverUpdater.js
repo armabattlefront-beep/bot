@@ -1,79 +1,87 @@
-const Gamedig = require("gamedig");
+// serverUpdater.js
+const { Client } = require("discord.js");
+const { Rcon } = require("arma-reforger-rcon");
+const { client } = require("./index");
 
-// Server config
-const servers = [
-  {
-    name: "BattleFront Madness Server 1",
-    ip: "136.243.133.169",
-    port: 3002,
-    maxPlayers: 128,
-    categoryName: "BattleData",
-    refreshInterval: 30_000,
-  },
-];
+const GUILD_ID = "1332753531764998265"; // Your Discord server ID
+const CATEGORY_NAME = "BattleData";
+const SERVER_NAME = "BattleFront Madness Server 1";
+const MAX_PLAYERS = 128;
 
-async function initServerUpdater(client) {
-  for (const srv of servers) {
-    try {
-      const guild = client.guilds.cache.first(); // You can also use .get(GUILD_ID)
-      if (!guild) throw new Error("No guild found for server updater");
+const RCON_HOST = process.env.RCON_HOST;
+const RCON_PORT = parseInt(process.env.RCON_PORT, 10);
+const RCON_PASSWORD = process.env.RCON_PASSWORD;
 
-      // Ensure category exists
-      let category = guild.channels.cache.find(
-        (c) => c.name === srv.categoryName && c.type === 4
-      );
+async function initServerUpdater() {
+  try {
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) return console.error("❌ Guild not found");
 
-      if (!category) {
-        category = await guild.channels.create({
-          name: srv.categoryName,
-          type: 4,
-          reason: "Server updater category",
-        });
-      }
+    // Ensure category exists
+    let category = guild.channels.cache.find(
+      (c) => c.name === CATEGORY_NAME && c.type === 4
+    );
+    if (!category) {
+      category = await guild.channels.create({
+        name: CATEGORY_NAME,
+        type: 4, // Category
+        reason: "Server updater category",
+      });
+    }
 
-      // Ensure text channel exists
-      let channel = guild.channels.cache.find(
-        (c) => c.parentId === category.id && c.name.startsWith(srv.name)
-      );
+    // Ensure channel exists
+    let channel = guild.channels.cache.find(
+      (c) => c.parentId === category.id && c.name.startsWith(SERVER_NAME)
+    );
+    if (!channel) {
+      channel = await guild.channels.create({
+        name: `${SERVER_NAME} 0/${MAX_PLAYERS}`,
+        type: 0, // Text channel
+        parent: category.id,
+        reason: "Playerlist updater channel",
+      });
+    }
 
-      if (!channel) {
-        channel = await guild.channels.create({
-          name: `${srv.name} 0/${srv.maxPlayers}`,
-          type: 0, // text channel
-          parent: category.id,
-          reason: "Playerlist updater channel",
-        });
-      }
+    // Connect to RCON
+    const rcon = new Rcon({
+      host: RCON_HOST,
+      port: RCON_PORT,
+      password: RCON_PASSWORD,
+    });
 
-      // Update channel periodically
-      const updateChannel = async () => {
-        try {
-          const state = await Gamedig.query({
-            type: "arma3",
-            host: srv.ip,
-            port: srv.port,
-          });
+    await rcon.connect();
+    console.log("✅ Connected to Arma Reforger RCON");
 
-          const playerNames =
-            state.players.map((p) => p.name).join(", ") || "No players online";
+    let lastPlayerList = [];
+    let lastPlayerCount = -1;
 
-          const channelName = `${srv.name} (${state.players.length}/${srv.maxPlayers})`;
+    const updateChannel = async () => {
+      try {
+        const players = await rcon.getPlayers(); // Returns array of { name, id, ... }
+        const currentCount = players.length;
+        const playerNames = players.map((p) => p.name).join(", ") || "No players online";
 
-          if (channel.name !== channelName) {
-            await channel.setName(channelName, "Updating player count");
-          }
+        // Only update if there’s a change
+        if (currentCount !== lastPlayerCount || playerNames !== lastPlayerList.join(", ")) {
+          lastPlayerCount = currentCount;
+          lastPlayerList = players.map((p) => p.name);
+
+          const channelName = `${SERVER_NAME} (${currentCount}/${MAX_PLAYERS})`;
+          if (channel.name !== channelName) await channel.setName(channelName, "Updating player count");
 
           await channel.setTopic(playerNames);
-        } catch (err) {
-          console.log(`⚠️ Failed to query server "${srv.name}":`, err.message);
         }
-      };
+      } catch (err) {
+        console.error("⚠️ Failed to query server:", err.message);
+      }
+    };
 
-      updateChannel();
-      setInterval(updateChannel, srv.refreshInterval);
-    } catch (err) {
-      console.error(`❌ Failed to initialize updater for "${srv.name}":`, err);
-    }
+    // Run immediately, then every 30s
+    updateChannel();
+    setInterval(updateChannel, 30_000);
+
+  } catch (err) {
+    console.error("❌ Failed to initialise server updater:", err);
   }
 }
 
