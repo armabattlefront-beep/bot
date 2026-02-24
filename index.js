@@ -95,12 +95,14 @@ client.on("interactionCreate", async (interaction) => {
           return ticket.handleCloseButton(interaction);
       }
 
+      // Poll button logic
+      const pollsModule = require("./database/polls");
       if (
         interaction.customId.startsWith("poll_option_") ||
         interaction.customId.startsWith("poll_custom_")
       ) {
         const msgId = interaction.message.id;
-        const poll = polls.getPoll(msgId);
+        const poll = pollsModule.getPoll(msgId);
         if (!poll) return;
 
         const index = parseInt(interaction.customId.split("_")[2]);
@@ -112,7 +114,7 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         poll.votes[option].push(interaction.user.id);
-        polls.updatePoll(msgId, poll);
+        pollsModule.updatePoll(msgId, poll);
 
         const newEmbed = new EmbedBuilder()
           .setTitle(`📊 ${poll.question}`)
@@ -148,14 +150,14 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-
-  // Initialise polls
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Initialise server updater with your guild ID
+  // Guild ID to put the server updater channel in
+  const GUILD_ID = "1332753531764998265";
+
   try {
-    await initServerUpdater("1332753531764998265"); // <--- YOUR GUILD ID HERE
+    await initServerUpdater(client, GUILD_ID);
     console.log("✅ Server updater initialised.");
   } catch (err) {
     console.error("❌ Failed to initialise server updater:", err);
