@@ -13,9 +13,7 @@ const express = require("express");
 const app = express();
 
 app.get("/", (_, res) => res.send("BattleFront Madness bot online"));
-app.listen(process.env.PORT || 8080, () =>
-  console.log("🌐 Express server running")
-);
+app.listen(process.env.PORT || 8080, () => console.log("🌐 Express server running"));
 
 // ==================================================
 // IMPORTS
@@ -95,14 +93,12 @@ client.on("interactionCreate", async (interaction) => {
           return ticket.handleCloseButton(interaction);
       }
 
-      // Poll button logic
-      const pollsModule = require("./database/polls");
       if (
         interaction.customId.startsWith("poll_option_") ||
         interaction.customId.startsWith("poll_custom_")
       ) {
         const msgId = interaction.message.id;
-        const poll = pollsModule.getPoll(msgId);
+        const poll = polls.getPoll(msgId);
         if (!poll) return;
 
         const index = parseInt(interaction.customId.split("_")[2]);
@@ -114,7 +110,7 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         poll.votes[option].push(interaction.user.id);
-        pollsModule.updatePoll(msgId, poll);
+        polls.updatePoll(msgId, poll);
 
         const newEmbed = new EmbedBuilder()
           .setTitle(`📊 ${poll.question}`)
@@ -148,16 +144,16 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 // READY
 // ==================================================
-client.once("clientReady", async () => {
+client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
+
+  // Initialize polls
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Guild ID to put the server updater channel in
-  const GUILD_ID = "1332753531764998265";
-
+  // Initialize server updater
   try {
-    await initServerUpdater(client, GUILD_ID);
+    await initServerUpdater();
     console.log("✅ Server updater initialised.");
   } catch (err) {
     console.error("❌ Failed to initialise server updater:", err);
