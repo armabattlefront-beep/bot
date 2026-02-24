@@ -78,14 +78,12 @@ for (const file of fs.readdirSync(commandsPath)) {
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Chat commands
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction);
       return;
     }
 
-    // Buttons (ticket system)
     if (interaction.isButton()) {
       const ticket = client.commands.get("ticket");
 
@@ -97,7 +95,6 @@ client.on("interactionCreate", async (interaction) => {
           return ticket.handleCloseButton(interaction);
       }
 
-      // Poll buttons
       if (
         interaction.customId.startsWith("poll_option_") ||
         interaction.customId.startsWith("poll_custom_")
@@ -149,16 +146,20 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 // READY
 // ==================================================
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // Initialize poll system
+  // Initialise polls
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Initialize server updater
-  await initServerUpdater();
-  console.log("✅ Server updater initialised.");
+  // Initialise server updater with your guild ID
+  try {
+    await initServerUpdater("1332753531764998265"); // <--- YOUR GUILD ID HERE
+    console.log("✅ Server updater initialised.");
+  } catch (err) {
+    console.error("❌ Failed to initialise server updater:", err);
+  }
 });
 
 // ==================================================
