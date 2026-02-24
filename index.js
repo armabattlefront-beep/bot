@@ -13,7 +13,9 @@ const express = require("express");
 const app = express();
 
 app.get("/", (_, res) => res.send("BattleFront Madness bot online"));
-app.listen(process.env.PORT || 8080, () => console.log("🌐 Express server running"));
+app.listen(process.env.PORT || 8080, () =>
+  console.log("🌐 Express server running")
+);
 
 // ==================================================
 // IMPORTS
@@ -21,6 +23,7 @@ app.listen(process.env.PORT || 8080, () => console.log("🌐 Express server runn
 const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
+const config = require("./config");
 const polls = require("./database/polls");
 const { initServerUpdater } = require("./serverUpdater");
 
@@ -147,13 +150,13 @@ client.on("interactionCreate", async (interaction) => {
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // Initialize polls
+  // Initialize poll system
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Initialize server updater
+  // Initialize server updater (pass client to avoid circular dependency)
   try {
-    await initServerUpdater();
+    await initServerUpdater(client);
     console.log("✅ Server updater initialised.");
   } catch (err) {
     console.error("❌ Failed to initialise server updater:", err);

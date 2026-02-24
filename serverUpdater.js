@@ -1,32 +1,26 @@
-// serverUpdater.js
 const Gamedig = require("gamedig");
-const { client } = require("./index");
 
-// === CONFIGURE YOUR SERVER ===
-const guildId = "1332753531764998265"; // Your Discord server (guild) ID
+// Server config
 const servers = [
   {
     name: "BattleFront Madness Server 1",
     ip: "136.243.133.169",
-    port: 3002, // A2S port
+    port: 3002,
     maxPlayers: 128,
     categoryName: "BattleData",
-    refreshInterval: 30_000, // 30 seconds
+    refreshInterval: 30_000,
   },
 ];
 
-async function initServerUpdater() {
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) {
-    console.error("❌ Could not find guild with ID:", guildId);
-    return;
-  }
-
+async function initServerUpdater(client) {
   for (const srv of servers) {
     try {
+      const guild = client.guilds.cache.first(); // You can also use .get(GUILD_ID)
+      if (!guild) throw new Error("No guild found for server updater");
+
       // Ensure category exists
       let category = guild.channels.cache.find(
-        (c) => c.name === srv.categoryName && c.type === 4 // 4 = Category
+        (c) => c.name === srv.categoryName && c.type === 4
       );
 
       if (!category) {
@@ -45,13 +39,13 @@ async function initServerUpdater() {
       if (!channel) {
         channel = await guild.channels.create({
           name: `${srv.name} 0/${srv.maxPlayers}`,
-          type: 0, // 0 = text channel
+          type: 0, // text channel
           parent: category.id,
           reason: "Playerlist updater channel",
         });
       }
 
-      // Function to update channel safely
+      // Update channel periodically
       const updateChannel = async () => {
         try {
           const state = await Gamedig.query({
@@ -71,21 +65,14 @@ async function initServerUpdater() {
 
           await channel.setTopic(playerNames);
         } catch (err) {
-          // Server might be offline
-          const offlineName = `${srv.name} (0/${srv.maxPlayers})`;
-          if (channel.name !== offlineName) {
-            await channel.setName(offlineName, "Server offline or unreachable");
-          }
-          await channel.setTopic("Server is offline or unreachable");
           console.log(`⚠️ Failed to query server "${srv.name}":`, err.message);
         }
       };
 
-      // Run immediately and then periodically
       updateChannel();
       setInterval(updateChannel, srv.refreshInterval);
     } catch (err) {
-      console.error(`❌ Failed to initialise updater for "${srv.name}":`, err);
+      console.error(`❌ Failed to initialize updater for "${srv.name}":`, err);
     }
   }
 }
