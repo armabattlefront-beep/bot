@@ -1,46 +1,32 @@
-// commands/leaderboard.js
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { getLeaderboard, getUserLevel, getPrestige } = require("../database/xpEngine");
+const { SlashCommandBuilder } = require("discord.js");
+const { getTop } = require("../database/xp");
 
 module.exports = {
+
   data: new SlashCommandBuilder()
     .setName("leaderboard")
-    .setDescription("Show the top XP holders in the server")
+    .setDescription("View XP leaderboard")
     .addIntegerOption(option =>
       option.setName("top")
-        .setDescription("Number of top users to display")
-        .setRequired(false)
+      .setDescription("How many users")
+      .setMinValue(5)
+      .setMaxValue(25)
     ),
 
   async execute(interaction) {
-    try {
-      const limit = interaction.options.getInteger("top") || 10;
 
-      const leaderboard = getLeaderboard(limit);
-      if (!leaderboard || leaderboard.length === 0) {
-        return interaction.reply({ content: "No XP data yet.", flags: 64 });
-      }
+    const limit = interaction.options.getInteger("top") || 10;
 
-      const embed = new EmbedBuilder()
-        .setTitle("🏆 BattleFront Leaderboard")
-        .setColor(0xf1c40f)
-        .setTimestamp()
-        .setDescription(
-          leaderboard.map((entry, i) => {
-            const level = getUserLevel(entry.id);
-            const prestige = getPrestige(entry.id);
-            return `**#${i + 1}** <@${entry.id}> — Level ${level} | Prestige ${prestige} | XP: ${entry.xp.toLocaleString()}`;
-          }).join("\n")
-        )
-        .setFooter({ text: "Climb the ranks, earn prestige, dominate the battlefield!" });
+    const board = getTop(limit);
 
-      await interaction.reply({ embeds: [embed] });
+    let text = "🏆 **BattleFront Leaderboard**\n\n";
 
-    } catch (err) {
-      console.error("LEADERBOARD ERROR:", err);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❌ Something went wrong fetching the leaderboard.", flags: 64 });
-      }
-    }
+    board.forEach((u,i)=>{
+      text += `${i+1}. <@${u.id}> — Level ${u.level} (Prestige ${u.prestige})\n`;
+    });
+
+    interaction.reply(text);
+
   }
+
 };

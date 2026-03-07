@@ -1,13 +1,13 @@
-// xp/xpEngine.js
-const { getUser, updateUser, logXP } = require("./xp");
-const { getGlobalMultiplier } = require("./xpSettings");
-const { xpRequiredForLevel, calculateLevelFromXP, MAX_LEVEL } = require("../xp/levelCurve");
+const { getUser, updateUser, logXP } = require("../database/xp");
+const { getGlobalMultiplier } = require("../database/xpSettings");
+const { calculateLevelFromXP, MAX_LEVEL } = require("./levelCurve");
 
 function prestigeMultiplier(prestige) {
-  return 1 + (prestige * 0.05);
+  return 1 + prestige * 0.05;
 }
 
 function addXP(userId, baseAmount, reason = "unknown") {
+
   const user = getUser(userId);
 
   const globalMulti = getGlobalMultiplier();
@@ -17,33 +17,20 @@ function addXP(userId, baseAmount, reason = "unknown") {
 
   const newTotalXp = user.totalXp + finalAmount;
 
-  let remainingXp = newTotalXp;
-  let level = 1;
-
-  for (let i = 1; i <= MAX_LEVEL; i++) {
-    const needed = xpRequiredForLevel(i);
-    if (remainingXp >= needed) {
-      remainingXp -= needed;
-      level++;
-    } else {
-      break;
-    }
-  }
-
-  if (level > MAX_LEVEL) level = MAX_LEVEL;
+  const levelData = calculateLevelFromXP(newTotalXp);
 
   updateUser(userId, {
-    xp: remainingXp,
-    level,
+    xp: levelData.remainingXp,
+    level: levelData.level,
     totalXp: newTotalXp
   });
 
   logXP(userId, finalAmount, reason);
 
   return {
-    leveledUp: level > user.level,
-    newLevel: level,
-    amountGained: finalAmount
+    leveledUp: levelData.level > user.level,
+    newLevel: levelData.level,
+    amount: finalAmount
   };
 }
 
@@ -53,14 +40,16 @@ function canPrestige(userId) {
 }
 
 function prestigeUser(userId) {
+
   const user = getUser(userId);
+
   if (!canPrestige(userId)) return false;
 
   updateUser(userId, {
     xp: 0,
     level: 1,
-    prestige: user.prestige + 1,
-    totalXp: 0
+    totalXp: 0,
+    prestige: user.prestige + 1
   });
 
   return true;
@@ -69,6 +58,5 @@ function prestigeUser(userId) {
 module.exports = {
   addXP,
   canPrestige,
-  prestigeUser,
-  prestigeMultiplier
+  prestigeUser
 };

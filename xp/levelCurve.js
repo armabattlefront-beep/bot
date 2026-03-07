@@ -1,5 +1,3 @@
-// xp/levelCurve.js
-
 const MAX_LEVEL = 200;
 
 function xpRequiredForLevel(level) {
@@ -8,20 +6,28 @@ function xpRequiredForLevel(level) {
 }
 
 function calculateLevelFromXP(totalXp) {
+
   let level = 1;
-  let xp = totalXp;
+  let remaining = totalXp;
 
   for (let i = 1; i <= MAX_LEVEL; i++) {
+
     const required = xpRequiredForLevel(i);
-    if (xp >= required) {
-      xp -= required;
+
+    if (remaining >= required) {
+      remaining -= required;
       level++;
     } else {
       break;
     }
+
   }
 
-  return Math.min(level, MAX_LEVEL);
+  return {
+    level: Math.min(level, MAX_LEVEL),
+    remainingXp: remaining
+  };
+
 }
 
 module.exports = {
