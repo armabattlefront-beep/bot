@@ -1,72 +1,67 @@
-// database/xpEngine.js
-const { getUser, updateUser, logXP } = require("./xp");
-const { getGlobalMultiplier } = require("./xpSettings");
-const { xpRequiredForLevel, calculateLevelFromXP, MAX_LEVEL } = require("../xp/levelCurve");
+const fs = require("fs");
+const path = require("path");
 
-function prestigeMultiplier(prestige) {
-  return 1 + (prestige * 0.05);
+const dbPath = path.join(__dirname, "xp.json");
+
+// Load or initialize XP database
+let xpDB = {};
+if (fs.existsSync(dbPath)) {
+  xpDB = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
 }
 
-function addXP(userId, baseAmount, reason = "unknown") {
-  const user = getUser(userId);
-
-  const globalMulti = getGlobalMultiplier();
-  const prestigeMulti = prestigeMultiplier(user.prestige);
-
-  const finalAmount = Math.floor(baseAmount * globalMulti * prestigeMulti);
-
-  const newTotalXp = user.totalXp + finalAmount;
-
-  const newLevel = calculateLevelFromXP(newTotalXp);
-  const currentLevelXp = xpRequiredForLevel(newLevel - 1);
-  const remainingXp = newTotalXp - sumXpToLevel(newLevel - 1);
-
-  updateUser(userId, {
-    xp: remainingXp,
-    level: newLevel,
-    totalXp: newTotalXp
-  });
-
-  logXP(userId, finalAmount, reason);
-
-  return {
-    leveledUp: newLevel > user.level,
-    newLevel,
-    amountGained: finalAmount
-  };
+// Save function
+function saveDB() {
+  fs.writeFileSync(dbPath, JSON.stringify(xpDB, null, 2));
 }
 
-// Helper: sum of XP required up to a certain level
-function sumXpToLevel(level) {
-  let sum = 0;
-  for (let i = 1; i <= level; i++) {
-    sum += xpRequiredForLevel(i);
+// XP logic
+function addXP(userId, amount) {
+  if (!xpDB[userId]) xpDB[userId] = { xp: 0, level: 0 };
+  xpDB[userId].xp += amount;
+
+  const newLevel = calculateLevelFromXP(xpDB[userId].xp);
+  if (newLevel > xpDB[userId].level) {
+    xpDB[userId].level = newLevel;
+    return { levelUp: true, level: newLevel };
   }
-  return sum;
+  saveDB();
+  return { levelUp: false, level: xpDB[userId].level };
 }
 
-function canPrestige(userId) {
-  const user = getUser(userId);
-  return user.level >= MAX_LEVEL && user.prestige < 10;
+// Convert XP to Level (simple formula, can adjust)
+function calculateLevelFromXP(xp) {
+  return Math.floor(0.1 * Math.sqrt(xp)); // Example: sqrt scaling
 }
 
-function prestigeUser(userId) {
-  const user = getUser(userId);
-  if (!canPrestige(userId)) return false;
+// Get XP and Level for a user
+function getUserXP(userId) {
+  if (!xpDB[userId]) return { xp: 0, level: 0 };
+  return xpDB[userId];
+}
 
-  updateUser(userId, {
-    xp: 0,
-    level: 1,
-    prestige: user.prestige + 1,
-    totalXp: 0
-  });
+// Leaderboard
+function getLeaderboard(top = 10) {
+  const users = Object.entries(xpDB).map(([id, data]) => ({
+    id,
+    xp: data.xp,
+    level: data.level
+  }));
+  users.sort((a, b) => b.xp - a.xp);
+  return users.slice(0, top);
+}
 
-  return true;
+// Reset XP (admin)
+function resetXP(userId) {
+  if (xpDB[userId]) {
+    xpDB[userId] = { xp: 0, level: 0 };
+    saveDB();
+  }
 }
 
 module.exports = {
   addXP,
-  canPrestige,
-  prestigeUser,
-  prestigeMultiplier
+  getUserXP,
+  calculateLevelFromXP,
+  getLeaderboard,
+  resetXP
 };

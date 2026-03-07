@@ -24,21 +24,15 @@ const {
   Client,
   GatewayIntentBits,
   Partials,
-  Collection,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder
+  Collection
 } = require("discord.js");
-
 const fs = require("fs");
 const path = require("path");
 const polls = require("./database/polls");
 const { initServerUpdater } = require("./serverUpdater");
 
 // XP SYSTEM
-const { handleMessage, handleReaction, handleVoiceUpdate } = require("./xp/xpListeners");
+const { initXPListeners } = require("./xp/xpListeners");
 
 // ==================================================
 // DISCORD CLIENT
@@ -48,11 +42,17 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildVoiceStates
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.Reaction]
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.User,
+    Partials.GuildMember
+  ]
 });
 
 // ==================================================
@@ -71,9 +71,7 @@ if (!process.env.TOKEN) {
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
 
-for (const file of fs.readdirSync(commandsPath)) {
-  if (!file.endsWith(".js")) continue;
-
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
   try {
     const command = require(path.join(commandsPath, file));
     if (command?.data?.name) {
@@ -95,7 +93,7 @@ client.on("interactionCreate", async (interaction) => {
     // Slash commands
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
-      if (cmd) await cmd.execute(interaction);
+      if (cmd) await cmd.execute(interaction, client);
       return;
     }
 
@@ -114,13 +112,15 @@ client.on("interactionCreate", async (interaction) => {
     // Select menus (Ticket Priority)
     if (interaction.isStringSelectMenu()) {
       const ticket = client.commands.get("ticket");
-      if (ticket && ticket.handlePrioritySelect) return ticket.handlePrioritySelect(interaction);
+      if (ticket && ticket.handlePrioritySelect)
+        return ticket.handlePrioritySelect(interaction);
     }
 
     // Modals (Ticket Submit)
     if (interaction.isModalSubmit()) {
       const ticket = client.commands.get("ticket");
-      if (ticket && ticket.handleModalSubmit) return ticket.handleModalSubmit(interaction, client);
+      if (ticket && ticket.handleModalSubmit)
+        return ticket.handleModalSubmit(interaction, client);
     }
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
@@ -135,14 +135,12 @@ client.on("interactionCreate", async (interaction) => {
 // ==================================================
 // XP EVENT LISTENERS
 // ==================================================
-client.on("messageCreate", handleMessage);
-client.on("messageReactionAdd", handleReaction);
-client.on("voiceStateUpdate", handleVoiceUpdate);
+initXPListeners(client);
 
 // ==================================================
 // READY
 // ==================================================
-client.once("clientReady", async () => {
+client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
   // Poll system

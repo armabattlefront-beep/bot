@@ -1,95 +1,79 @@
-﻿// xp/xpListeners.js
-const { addXP } = require("../database/xpEngine");
-const { getUser, updateUser } = require("../database/xp");
+﻿const { addXP } = require("../database/xpEngine");
 
-const MESSAGE_COOLDOWN = 15000; // 15 seconds
-const VOICE_INTERVAL = 60000; // 1 minute
-const BASE_MESSAGE_XP = 15;
-const MEDIA_BONUS_XP = 10;
-const REACTION_GIVE_XP = 2;
-const REACTION_RECEIVE_XP = 3;
-const VOICE_XP_PER_MINUTE = 12;
+// Config XP amounts
+const XP_CONFIG = {
+  message: 5,
+  reaction: 2,
+  voiceMinute: 1
+};
 
-const activeVoice = new Map();
-
-// ==============================
-// MESSAGE XP
-// ==============================
-function handleMessage(message) {
-  if (!message.guild || message.author.bot) return;
-
-  const user = getUser(message.author.id);
-  const now = Date.now();
-
-  if (now - user.lastMessage < MESSAGE_COOLDOWN) return;
-
-  let xpGain = BASE_MESSAGE_XP;
-  if (message.attachments.size > 0) xpGain += MEDIA_BONUS_XP;
-  if (message.content.length > 120) xpGain += 5;
-
-  const result = addXP(message.author.id, xpGain, "message");
-
-  updateUser(message.author.id, {
-    lastMessage: now,
-    messages: user.messages + 1
+module.exports.initXPListeners = (client) => {
+  // ---------------------------
+  // MESSAGE XP
+  // ---------------------------
+  client.on("messageCreate", async (message) => {
+    if (message.author.bot) return;
+    try {
+      const { levelUp, level } = addXP(message.author.id, XP_CONFIG.message);
+      if (levelUp) {
+        message.channel.send(`🎉 <@${message.author.id}> reached level **${level}**!`);
+      }
+    } catch (err) {
+      console.error("XP MESSAGE ERROR:", err);
+    }
   });
 
-  if (result.leveledUp) {
-    message.channel.send(
-      `🎖️ <@${message.author.id}> advanced to **Level ${result.newLevel}**!`
-    );
-  }
-}
-
-// ==============================
-// REACTION XP
-// ==============================
-function handleReaction(reaction, user) {
-  if (!reaction.message.guild || user.bot) return;
-
-  addXP(user.id, REACTION_GIVE_XP, "reaction_given");
-
-  if (reaction.message.author && !reaction.message.author.bot) {
-    addXP(reaction.message.author.id, REACTION_RECEIVE_XP, "reaction_received");
-  }
-
-  const giver = getUser(user.id);
-  updateUser(user.id, { reactionsGiven: giver.reactionsGiven + 1 });
-
-  const receiver = getUser(reaction.message.author.id);
-  updateUser(reaction.message.author.id, { reactionsReceived: receiver.reactionsReceived + 1 });
-}
-
-// ==============================
-// VOICE XP
-// ==============================
-function handleVoiceUpdate(oldState, newState) {
-  const userId = newState.id;
-
-  // User joins voice
-  if (!oldState.channel && newState.channel) {
-    activeVoice.set(userId, Date.now());
-  }
-
-  // User leaves voice
-  if (oldState.channel && !newState.channel) {
-    const joinedAt = activeVoice.get(userId);
-    if (!joinedAt) return;
-
-    const minutes = Math.floor((Date.now() - joinedAt) / VOICE_INTERVAL);
-
-    if (minutes > 0) {
-      addXP(userId, minutes * VOICE_XP_PER_MINUTE, "voice");
-      const user = getUser(userId);
-      updateUser(userId, { voiceMinutes: user.voiceMinutes + minutes });
+  // ---------------------------
+  // REACTION XP
+  // ---------------------------
+  client.on("messageReactionAdd", async (reaction, user) => {
+    if (user.bot) return;
+    try {
+      if (reaction.partial) await reaction.fetch();
+      const { levelUp, level } = addXP(user.id, XP_CONFIG.reaction);
+      if (levelUp) {
+        const channel = reaction.message.channel;
+        channel.send(`🎉 <@${user.id}> reached level **${level}**!`);
+      }
+    } catch (err) {
+      console.error("XP REACTION ERROR:", err);
     }
+  });
 
-    activeVoice.delete(userId);
-  }
-}
+  // ---------------------------
+  // VOICE XP
+  // ---------------------------
+  const voiceTimestamps = {}; // Track join times
 
-module.exports = {
-  handleMessage,
-  handleReaction,
-  handleVoiceUpdate
+  client.on("voiceStateUpdate", (oldState, newState) => {
+    try {
+      const userId = newState.member.id;
+      if (!userId) return;
+
+      // Joined voice
+      if (!oldState.channelId && newState.channelId) {
+        voiceTimestamps[userId] = Date.now();
+      }
+
+      // Left voice
+      if (oldState.channelId && !newState.channelId) {
+        const joinTime = voiceTimestamps[userId];
+        if (!joinTime) return;
+
+        const minutes = Math.floor((Date.now() - joinTime) / 60000);
+        const xpGained = minutes * XP_CONFIG.voiceMinute;
+        if (xpGained > 0) {
+          const { levelUp, level } = addXP(userId, xpGained);
+          if (levelUp) {
+            const channel = oldState.guild.systemChannel || oldState.channel;
+            if (channel)
+              channel.send(`🎉 <@${userId}> reached level **${level}** from voice chat!`);
+          }
+        }
+        delete voiceTimestamps[userId];
+      }
+    } catch (err) {
+      console.error("XP VOICE ERROR:", err);
+    }
+  });
 };
