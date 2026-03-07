@@ -1,4 +1,4 @@
-const { addXP } = require("./xpEngine");
++ const { addXP } = require("../database/xpEngine");
 const { getUser, updateUser } = require("../database/xp");
 
 const MESSAGE_COOLDOWN = 15000;
