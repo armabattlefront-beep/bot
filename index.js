@@ -74,31 +74,71 @@ for (const file of fs.readdirSync(commandsPath)) {
 }
 
 // ==================================================
-// INTERACTION HANDLER
+// INTERACTION HANDLER (updated for tickets)
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
+    // ==============================
+    // SLASH COMMANDS
+    // ==============================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction);
       return;
     }
 
+    // ==============================
+    // BUTTONS
+    // ==============================
     if (interaction.isButton()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket) {
-        if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton)
-          return ticket.handleButton(interaction);
+      const ticketCmd = client.commands.get("ticket");
+      if (!ticketCmd) return;
 
-        if (interaction.customId === "ticket_close" && ticket.handleCloseButton)
-          return ticket.handleCloseButton(interaction);
+      // Handle ticket type buttons
+      if (interaction.customId.startsWith("ticket_type_") && ticketCmd.handleButton) {
+        return ticketCmd.handleButton(interaction);
+      }
+
+      // Handle ticket close button
+      if (interaction.customId === "ticket_close" && ticketCmd.handleCloseButton) {
+        return ticketCmd.handleCloseButton(interaction);
       }
     }
+
+    // ==============================
+    // SELECT MENUS
+    // ==============================
+    if (interaction.isStringSelectMenu()) {
+      const ticketCmd = client.commands.get("ticket");
+      if (!ticketCmd) return;
+
+      if (interaction.customId.startsWith("ticket_priority_") && ticketCmd.handlePrioritySelect) {
+        return ticketCmd.handlePrioritySelect(interaction);
+      }
+    }
+
+    // ==============================
+    // MODAL SUBMITS
+    // ==============================
+    if (interaction.isModalSubmit()) {
+      const ticketCmd = client.commands.get("ticket");
+      if (!ticketCmd) return;
+
+      if (interaction.customId.startsWith("ticket_modal_") && ticketCmd.handleModalSubmit) {
+        return ticketCmd.handleModalSubmit(interaction, client);
+      }
+    }
+
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
+
+    // Reply safely if not already responded
     if (!interaction.replied && !interaction.deferred) {
       try {
-        await interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
+        await interaction.reply({
+          content: "❌ Something went wrong while processing this interaction.",
+          ephemeral: true
+        });
       } catch {}
     }
   }

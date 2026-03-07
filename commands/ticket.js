@@ -1,4 +1,3 @@
-// commands/ticket.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -24,6 +23,11 @@ const TICKET_TYPES = {
   discordSupport: { label: "Discord Support", role: config.STAFF_ROLE_IDS.support, color: 0x3498db },
   wellbeing: { label: "Community / Wellbeing", role: config.STAFF_ROLE_IDS.wellbeing, color: 0x9b59b6 }
 };
+
+// ==============================
+// ACTIVE TICKET CACHE
+// ==============================
+const activeTickets = new Map();
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -61,6 +65,7 @@ module.exports = {
     if (!typeInfo)
       return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
+    // Show priority select menu
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`ticket_priority_${typeKey}_${interaction.user.id}`)
@@ -73,7 +78,7 @@ module.exports = {
     );
 
     await interaction.update({
-      content: `**${typeInfo.label}** selected.\nNow choose the priority:`,
+      content: `**${typeInfo.label}** selected.\nPlease select the priority:`,
       components: [row]
     });
   },
@@ -95,6 +100,7 @@ module.exports = {
 
     const priority = interaction.values[0];
 
+    // Show modal for details
     const modal = new ModalBuilder()
       .setCustomId(`ticket_modal_${typeKey}_${priority}_${userId}`)
       .setTitle(`${typeInfo.label} Ticket`);
@@ -134,6 +140,7 @@ module.exports = {
     );
 
     modal.addComponents(rows);
+
     await interaction.showModal(modal);
   },
 
@@ -226,9 +233,9 @@ module.exports = {
     const msg = interaction.message;
     if (!msg) return;
 
-    if (!interaction.member.roles.cache.some(r =>
-      Object.values(config.STAFF_ROLE_IDS).includes(r.id)
-    )) {
+    const member = interaction.member;
+    const staffRoleIds = Object.values(config.STAFF_ROLE_IDS);
+    if (!member.roles.cache.some(r => staffRoleIds.includes(r.id))) {
       return interaction.reply({
         content: "❌ You do not have permission to close this ticket.",
         ephemeral: true
