@@ -1,30 +1,61 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { getUser, getRankPosition } = require("../database/xp");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { getUser } = require("../database/xp");
+const { getLevelFromXp } = require("../database/levelCurve");
 const { getRankName } = require("../xp/ranks");
 
-module.exports = {
+// Map rank tiers to emojis for flair
+const rankEmojis = {
+  "Recruit": "🟢",
+  "Private": "🔵",
+  "Lance Corporal": "🟡",
+  "Corporal": "🟠",
+  "Sergeant": "🔴",
+  "Staff Sergeant": "🟣",
+  "Warrant Officer": "⚪",
+  "Lieutenant": "🟤",
+  "Captain": "🏅",
+  "Major": "🎖️",
+  "Colonel": "⭐",
+  "Brigadier": "🌟",
+  "General": "🏆",
+  "Field Marshal": "🏅"
+};
 
+module.exports = {
   data: new SlashCommandBuilder()
     .setName("rank")
-    .setDescription("View your XP rank"),
-
+    .setDescription("View your own rank card or another user's rank")
+    .addUserOption(option =>
+      option.setName("user")
+        .setDescription("User to view rank for")
+    ),
   async execute(interaction) {
+    const target = interaction.options.getUser("user") || interaction.user;
+    const userData = getUser(target.id);
+    if (!userData) return interaction.reply({ content: "User not found.", ephemeral: true });
 
-    const user = getUser(interaction.user.id);
+    const { level, xp, xpNeeded } = getLevelFromXp(userData.totalXp);
+    const rankName = getRankName(level);
+    const rankTier = rankName.split(" •")[0];
+    const emoji = rankEmojis[rankTier] || "🎖️";
 
-    const rank = getRankPosition(interaction.user.id);
+    // Progress bar
+    const barLength = 20;
+    const progress = Math.floor((xp / xpNeeded) * barLength);
+    const bar = "🟩".repeat(progress) + "⬛".repeat(barLength - progress);
 
-    const rankName = getRankName(user.level);
+    const embed = new EmbedBuilder()
+      .setTitle(`${emoji} ${target.username}'s Rank`)
+      .setDescription(`**${rankName}**\nPrestige: ${userData.prestige}`)
+      .addFields(
+        { name: "Level", value: `${level}`, inline: true },
+        { name: "XP", value: `${xp.toLocaleString()} / ${xpNeeded.toLocaleString()}`, inline: true },
+        { name: "Progress", value: bar }
+      )
+      .setThumbnail(target.displayAvatarURL({ dynamic: true }))
+      .setColor(0x00ff00)
+      .setTimestamp();
 
-    interaction.reply(
-      `🎖 **${interaction.user.username}**\n` +
-      `Rank: ${rankName}\n` +
-      `Level: ${user.level}\n` +
-      `Prestige: ${user.prestige}\n` +
-      `XP: ${user.totalXp}\n` +
-      `Server Rank: #${rank}`
-    );
-
-  }
-
+    await interaction.reply({ embeds: [embed] });
+  },
 };
