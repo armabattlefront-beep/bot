@@ -1,13 +1,13 @@
-const { getUser, updateUser, logXP } = require("../database/xp");
-const { getGlobalMultiplier } = require("../database/xpSettings");
-const { calculateLevelFromXP, MAX_LEVEL } = require("./levelCurve");
+// database/xpEngine.js
+const { getUser, updateUser, logXP } = require("./xp");
+const { getGlobalMultiplier } = require("./xpSettings");
+const { xpRequiredForLevel, calculateLevelFromXP, MAX_LEVEL } = require("../xp/levelCurve");
 
 function prestigeMultiplier(prestige) {
-  return 1 + prestige * 0.05;
+  return 1 + (prestige * 0.05);
 }
 
 function addXP(userId, baseAmount, reason = "unknown") {
-
   const user = getUser(userId);
 
   const globalMulti = getGlobalMultiplier();
@@ -17,21 +17,32 @@ function addXP(userId, baseAmount, reason = "unknown") {
 
   const newTotalXp = user.totalXp + finalAmount;
 
-  const levelData = calculateLevelFromXP(newTotalXp);
+  const newLevel = calculateLevelFromXP(newTotalXp);
+  const currentLevelXp = xpRequiredForLevel(newLevel - 1);
+  const remainingXp = newTotalXp - sumXpToLevel(newLevel - 1);
 
   updateUser(userId, {
-    xp: levelData.remainingXp,
-    level: levelData.level,
+    xp: remainingXp,
+    level: newLevel,
     totalXp: newTotalXp
   });
 
   logXP(userId, finalAmount, reason);
 
   return {
-    leveledUp: levelData.level > user.level,
-    newLevel: levelData.level,
-    amount: finalAmount
+    leveledUp: newLevel > user.level,
+    newLevel,
+    amountGained: finalAmount
   };
+}
+
+// Helper: sum of XP required up to a certain level
+function sumXpToLevel(level) {
+  let sum = 0;
+  for (let i = 1; i <= level; i++) {
+    sum += xpRequiredForLevel(i);
+  }
+  return sum;
 }
 
 function canPrestige(userId) {
@@ -40,16 +51,14 @@ function canPrestige(userId) {
 }
 
 function prestigeUser(userId) {
-
   const user = getUser(userId);
-
   if (!canPrestige(userId)) return false;
 
   updateUser(userId, {
     xp: 0,
     level: 1,
-    totalXp: 0,
-    prestige: user.prestige + 1
+    prestige: user.prestige + 1,
+    totalXp: 0
   });
 
   return true;
@@ -58,5 +67,6 @@ function prestigeUser(userId) {
 module.exports = {
   addXP,
   canPrestige,
-  prestigeUser
+  prestigeUser,
+  prestigeMultiplier
 };
