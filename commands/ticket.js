@@ -1,3 +1,4 @@
+// commands/ticket.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -24,19 +25,11 @@ const TICKET_TYPES = {
   wellbeing: { label: "Community / Wellbeing", role: config.STAFF_ROLE_IDS.wellbeing, color: 0x9b59b6 }
 };
 
-// ==============================
-// ACTIVE TICKET CACHE
-// ==============================
-const activeTickets = new Map();
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("ticket")
     .setDescription("Open a new support ticket"),
 
-  // ==============================
-  // STEP 1 — Slash Command
-  // ==============================
   async execute(interaction) {
     const row = new ActionRowBuilder().addComponents(
       Object.entries(TICKET_TYPES).map(([key, type]) =>
@@ -54,9 +47,6 @@ module.exports = {
     });
   },
 
-  // ==============================
-  // STEP 2 — Handle Type Button
-  // ==============================
   async handleButton(interaction) {
     if (!interaction.customId.startsWith("ticket_type_")) return;
 
@@ -65,7 +55,6 @@ module.exports = {
     if (!typeInfo)
       return interaction.reply({ content: "❌ Invalid ticket type.", ephemeral: true });
 
-    // Show priority select menu
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`ticket_priority_${typeKey}_${interaction.user.id}`)
@@ -78,14 +67,11 @@ module.exports = {
     );
 
     await interaction.update({
-      content: `**${typeInfo.label}** selected.\nPlease select the priority:`,
+      content: `**${typeInfo.label}** selected.\nNow choose the priority:`,
       components: [row]
     });
   },
 
-  // ==============================
-  // STEP 3 — Handle Priority Select
-  // ==============================
   async handlePrioritySelect(interaction) {
     if (!interaction.customId.startsWith("ticket_priority_")) return;
 
@@ -100,7 +86,6 @@ module.exports = {
 
     const priority = interaction.values[0];
 
-    // Show modal for details
     const modal = new ModalBuilder()
       .setCustomId(`ticket_modal_${typeKey}_${priority}_${userId}`)
       .setTitle(`${typeInfo.label} Ticket`);
@@ -140,13 +125,9 @@ module.exports = {
     );
 
     modal.addComponents(rows);
-
     await interaction.showModal(modal);
   },
 
-  // ==============================
-  // STEP 4 — Handle Modal Submit
-  // ==============================
   async handleModalSubmit(interaction, client) {
     if (!interaction.customId.startsWith("ticket_modal_")) return;
 
@@ -174,11 +155,8 @@ module.exports = {
       )
       .setTimestamp();
 
-    if (values.ign)
-      embed.addFields({ name: "IGN", value: values.ign, inline: true });
-
-    if (values.attachments)
-      embed.addFields({ name: "Attachments", value: values.attachments });
+    if (values.ign) embed.addFields({ name: "IGN", value: values.ign, inline: true });
+    if (values.attachments) embed.addFields({ name: "Attachments", value: values.attachments });
 
     const board = client.channels.cache.get(config.TICKET_BOARD_CHANNEL);
     if (!board)
@@ -191,20 +169,29 @@ module.exports = {
         .setStyle(ButtonStyle.Danger)
     );
 
+    // ===== SEND TICKET MESSAGE =====
     const msg = await board.send({
       content: typeInfo.role ? `<@&${typeInfo.role}>` : null,
       embeds: [embed],
       components: [closeRow]
     });
 
+    // ===== CREATE PRIVATE THREAD =====
     const thread = await msg.startThread({
       name: `ticket-${userId}-${Date.now()}`,
       autoArchiveDuration: 1440,
-      reason: `Ticket created by ${interaction.user.tag}`
+      reason: `Ticket created by ${interaction.user.tag}`,
+      type: 11 // GUILD_PRIVATE_THREAD
     });
 
-    const ticketId = generateTicketId(userId);
+    // Add creator and staff roles to thread
+    await thread.members.add(userId).catch(err => console.error("Failed to add ticket creator:", err));
+    for (const roleId of Object.values(config.STAFF_ROLE_IDS)) {
+      const role = interaction.guild.roles.cache.get(roleId);
+      if (role) await thread.members.add(roleId).catch(() => {});
+    }
 
+    const ticketId = generateTicketId(userId);
     addTicket({
       id: ticketId,
       creatorId: userId,
@@ -226,16 +213,13 @@ module.exports = {
     });
   },
 
-  // ==============================
-  // STEP 5 — Handle Close Button
-  // ==============================
   async handleCloseButton(interaction) {
     const msg = interaction.message;
     if (!msg) return;
 
-    const member = interaction.member;
-    const staffRoleIds = Object.values(config.STAFF_ROLE_IDS);
-    if (!member.roles.cache.some(r => staffRoleIds.includes(r.id))) {
+    if (!interaction.member.roles.cache.some(r =>
+      Object.values(config.STAFF_ROLE_IDS).includes(r.id)
+    )) {
       return interaction.reply({
         content: "❌ You do not have permission to close this ticket.",
         ephemeral: true

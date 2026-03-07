@@ -20,11 +20,25 @@ app.listen(process.env.PORT || 8080, () =>
 // ==================================================
 // IMPORTS
 // ==================================================
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  Collection,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder
+} = require("discord.js");
+
 const fs = require("fs");
 const path = require("path");
 const polls = require("./database/polls");
 const { initServerUpdater } = require("./serverUpdater");
+
+// XP SYSTEM
+const { handleMessage, handleReaction, handleVoiceUpdate } = require("./xp/xpListeners");
 
 // ==================================================
 // DISCORD CLIENT
@@ -74,81 +88,64 @@ for (const file of fs.readdirSync(commandsPath)) {
 }
 
 // ==================================================
-// INTERACTION HANDLER (updated for tickets)
+// INTERACTION HANDLER
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
-    // ==============================
-    // SLASH COMMANDS
-    // ==============================
+    // Slash commands
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction);
       return;
     }
 
-    // ==============================
-    // BUTTONS
-    // ==============================
+    // Buttons (Tickets)
     if (interaction.isButton()) {
-      const ticketCmd = client.commands.get("ticket");
-      if (!ticketCmd) return;
+      const ticket = client.commands.get("ticket");
+      if (!ticket) return;
 
-      // Handle ticket type buttons
-      if (interaction.customId.startsWith("ticket_type_") && ticketCmd.handleButton) {
-        return ticketCmd.handleButton(interaction);
-      }
+      if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton)
+        return ticket.handleButton(interaction);
 
-      // Handle ticket close button
-      if (interaction.customId === "ticket_close" && ticketCmd.handleCloseButton) {
-        return ticketCmd.handleCloseButton(interaction);
-      }
+      if (interaction.customId === "ticket_close" && ticket.handleCloseButton)
+        return ticket.handleCloseButton(interaction);
     }
 
-    // ==============================
-    // SELECT MENUS
-    // ==============================
+    // Select menus (Ticket Priority)
     if (interaction.isStringSelectMenu()) {
-      const ticketCmd = client.commands.get("ticket");
-      if (!ticketCmd) return;
-
-      if (interaction.customId.startsWith("ticket_priority_") && ticketCmd.handlePrioritySelect) {
-        return ticketCmd.handlePrioritySelect(interaction);
-      }
+      const ticket = client.commands.get("ticket");
+      if (ticket && ticket.handlePrioritySelect) return ticket.handlePrioritySelect(interaction);
     }
 
-    // ==============================
-    // MODAL SUBMITS
-    // ==============================
+    // Modals (Ticket Submit)
     if (interaction.isModalSubmit()) {
-      const ticketCmd = client.commands.get("ticket");
-      if (!ticketCmd) return;
-
-      if (interaction.customId.startsWith("ticket_modal_") && ticketCmd.handleModalSubmit) {
-        return ticketCmd.handleModalSubmit(interaction, client);
-      }
+      const ticket = client.commands.get("ticket");
+      if (ticket && ticket.handleModalSubmit) return ticket.handleModalSubmit(interaction, client);
     }
-
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
-
-    // Reply safely if not already responded
     if (!interaction.replied && !interaction.deferred) {
       try {
-        await interaction.reply({
-          content: "❌ Something went wrong while processing this interaction.",
-          ephemeral: true
-        });
+        await interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
       } catch {}
     }
   }
 });
 
 // ==================================================
+// XP EVENT LISTENERS
+// ==================================================
+client.on("messageCreate", handleMessage);
+client.on("messageReactionAdd", handleReaction);
+client.on("voiceStateUpdate", handleVoiceUpdate);
+
+// ==================================================
 // READY
 // ==================================================
 client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
+
+  // Poll system
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
@@ -164,4 +161,7 @@ client.login(process.env.TOKEN)
   .then(() => console.log("🔑 Login attempt sent"))
   .catch((err) => console.error("❌ Failed to login:", err));
 
+// ==================================================
+// EXPORT CLIENT
+// ==================================================
 module.exports = { client };
