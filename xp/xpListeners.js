@@ -1,71 +1,91 @@
-+ const { addXP } = require("../database/xpEngine");
+﻿// xp/xpListeners.js
+const { addXP } = require("../database/xpEngine");
 const { getUser, updateUser } = require("../database/xp");
 
-const MESSAGE_COOLDOWN = 15000;
-const BASE_XP = 15;
+const MESSAGE_COOLDOWN = 15000; // 15 seconds
+const VOICE_INTERVAL = 60000; // 1 minute
+const BASE_MESSAGE_XP = 15;
+const MEDIA_BONUS_XP = 10;
+const REACTION_GIVE_XP = 2;
+const REACTION_RECEIVE_XP = 3;
+const VOICE_XP_PER_MINUTE = 12;
 
-const lastMessages = new Map();
+const activeVoice = new Map();
 
+// ==============================
+// MESSAGE XP
+// ==============================
 function handleMessage(message) {
-
-  if (!message.guild) return;
-  if (message.author.bot) return;
-
-  const now = Date.now();
-  const last = lastMessages.get(message.author.id) || 0;
-
-  if (now - last < MESSAGE_COOLDOWN) return;
-
-  if (message.content.length < 5) return;
-
-  let xp = BASE_XP;
-
-  if (message.attachments.size > 0) xp += 10;
-  if (message.content.length > 120) xp += 5;
-
-  const result = addXP(message.author.id, xp, "message");
+  if (!message.guild || message.author.bot) return;
 
   const user = getUser(message.author.id);
+  const now = Date.now();
+
+  if (now - user.lastMessage < MESSAGE_COOLDOWN) return;
+
+  let xpGain = BASE_MESSAGE_XP;
+  if (message.attachments.size > 0) xpGain += MEDIA_BONUS_XP;
+  if (message.content.length > 120) xpGain += 5;
+
+  const result = addXP(message.author.id, xpGain, "message");
 
   updateUser(message.author.id, {
-    messages: user.messages + 1,
-    lastMessage: now
+    lastMessage: now,
+    messages: user.messages + 1
   });
 
-  lastMessages.set(message.author.id, now);
-
   if (result.leveledUp) {
-
     message.channel.send(
-      `🎖️ <@${message.author.id}> reached **Level ${result.newLevel}**!`
+      `🎖️ <@${message.author.id}> advanced to **Level ${result.newLevel}**!`
     );
-
   }
-
 }
 
+// ==============================
+// REACTION XP
+// ==============================
 function handleReaction(reaction, user) {
+  if (!reaction.message.guild || user.bot) return;
 
-  if (user.bot) return;
-
-  addXP(user.id, 2, "reaction_given");
+  addXP(user.id, REACTION_GIVE_XP, "reaction_given");
 
   if (reaction.message.author && !reaction.message.author.bot) {
-
-    addXP(reaction.message.author.id, 3, "reaction_received");
-
+    addXP(reaction.message.author.id, REACTION_RECEIVE_XP, "reaction_received");
   }
 
+  const giver = getUser(user.id);
+  updateUser(user.id, { reactionsGiven: giver.reactionsGiven + 1 });
+
+  const receiver = getUser(reaction.message.author.id);
+  updateUser(reaction.message.author.id, { reactionsReceived: receiver.reactionsReceived + 1 });
 }
 
+// ==============================
+// VOICE XP
+// ==============================
 function handleVoiceUpdate(oldState, newState) {
-
-  if (!newState.channel) return;
-
   const userId = newState.id;
 
-  addXP(userId, 10, "voice");
+  // User joins voice
+  if (!oldState.channel && newState.channel) {
+    activeVoice.set(userId, Date.now());
+  }
 
+  // User leaves voice
+  if (oldState.channel && !newState.channel) {
+    const joinedAt = activeVoice.get(userId);
+    if (!joinedAt) return;
+
+    const minutes = Math.floor((Date.now() - joinedAt) / VOICE_INTERVAL);
+
+    if (minutes > 0) {
+      addXP(userId, minutes * VOICE_XP_PER_MINUTE, "voice");
+      const user = getUser(userId);
+      updateUser(userId, { voiceMinutes: user.voiceMinutes + minutes });
+    }
+
+    activeVoice.delete(userId);
+  }
 }
 
 module.exports = {
