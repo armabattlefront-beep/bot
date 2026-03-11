@@ -7,7 +7,7 @@ module.exports = {
         : ["1332754586179473632", "1332753537456803851", "1435659408783708161"],
 
     MOD_LOG_CHANNEL: process.env.MOD_LOG_CHANNEL || "1463209423907455057",
-    LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "123456789012345678",
+    LIVE_ANNOUNCE_CHANNEL_ID: process.env.LIVE_ANNOUNCE_CHANNEL_ID || "1460310442021748923",
 
     // =========================
     // STAFF ROLES
@@ -18,6 +18,11 @@ module.exports = {
         support: "1387785600140185771",
         wellbeing: "1470212013979471973"
     },
+
+    // =========================
+    // LIVE ROLE
+    // =========================
+    LIVE_ROLE_ID: process.env.LIVE_ROLE_ID || "147999999999999999", // replace with your LIVE NOW role ID
 
     // =========================
     // TICKET SYSTEM

@@ -30,6 +30,8 @@ const fs = require("fs");
 const path = require("path");
 const polls = require("./database/polls");
 const { initServerUpdater } = require("./serverUpdater");
+const { startLiveMonitor } = require("./services/liveMonitor");
+const { refreshTwitchToken } = require("./services/twitchToken");
 
 // XP SYSTEM
 const { initXPListeners } = require("./xp/xpListeners");
@@ -143,6 +145,12 @@ initXPListeners(client);
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
+  // Refresh Twitch token at startup
+  await refreshTwitchToken();
+
+  // Optional: auto-refresh Twitch token every 55 minutes
+  setInterval(() => refreshTwitchToken(), 55 * 60 * 1000);
+
   // Poll system
   polls.init(client);
   console.log("✅ Poll system initialised.");
@@ -150,6 +158,10 @@ client.once("ready", async () => {
   // Initialize the Arma Reforger server updater
   await initServerUpdater(client);
   console.log("✅ Server updater initialised.");
+
+  // START LIVE MONITOR
+  startLiveMonitor(client);
+  console.log("✅ Live monitor started.");
 });
 
 // ==================================================
