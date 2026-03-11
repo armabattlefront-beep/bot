@@ -1,22 +1,23 @@
+// services/liveMonitor.js
 const { EmbedBuilder } = require("discord.js");
 const { getAllStreamers } = require("../database/streamers");
 const config = require("../config");
 
 // ----------------------
-// AUTO LOAD / INSTALL AXIOS v1.6.6
+// AUTO LOAD / INSTALL AXIOS (v0.27.2 for CommonJS)
 // ----------------------
 let axios;
 try {
   axios = require("axios");
 } catch {
-  console.log("📦 Axios not found, installing Axios v1.6.6...");
+  console.log("📦 Axios not found, installing Axios v0.27.2...");
   const { execSync } = require("child_process");
-  execSync("npm install axios@1.6.6", { stdio: "inherit" });
+  execSync("npm install axios@0.27.2", { stdio: "inherit" });
   axios = require("axios");
 }
 
 // ----------------------
-// CACHE
+// LIVE CACHE
 // ----------------------
 const liveCache = new Set();
 
@@ -100,7 +101,7 @@ async function checkStreams(client) {
     if (streamer.platform === "youtube") liveData = await checkYouTube(streamer);
     if (streamer.platform === "tiktok") liveData = await checkTikTok(streamer);
 
-    // Remove from cache & remove role if not live
+    // Remove from cache & role if offline
     if (!liveData) {
       liveCache.delete(streamer.id);
 
@@ -119,7 +120,7 @@ async function checkStreams(client) {
     if (liveCache.has(streamer.id)) continue;
     liveCache.add(streamer.id);
 
-    // Assign role
+    // Assign live role
     for (const guild of guilds.values()) {
       const member = guild.members.cache.find(
         (m) => m.user.username.toLowerCase() === streamer.name.toLowerCase()
@@ -131,9 +132,12 @@ async function checkStreams(client) {
 
     // Build stream URL
     let streamUrl;
-    if (streamer.platform === "twitch") streamUrl = `https://twitch.tv/${streamer.name}`;
-    if (streamer.platform === "youtube") streamUrl = `https://youtube.com/channel/${streamer.id}`;
-    if (streamer.platform === "tiktok") streamUrl = `https://www.tiktok.com/@${streamer.name}?lang=en`;
+    if (streamer.platform === "twitch")
+      streamUrl = `https://twitch.tv/${streamer.name}`;
+    if (streamer.platform === "youtube")
+      streamUrl = `https://youtube.com/channel/${streamer.id}`;
+    if (streamer.platform === "tiktok")
+      streamUrl = `https://www.tiktok.com/@${streamer.name}?lang=en`;
 
     const embed = new EmbedBuilder()
       .setTitle(`🔴 ${streamer.name} is LIVE`)
@@ -152,9 +156,7 @@ async function checkStreams(client) {
 // ----------------------
 function startLiveMonitor(client) {
   console.log("📡 Live monitor started");
-  setInterval(() => {
-    checkStreams(client);
-  }, 60000); // check every 60 seconds
+  setInterval(() => checkStreams(client), 60000); // every 60s
 }
 
 module.exports = { startLiveMonitor };
