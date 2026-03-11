@@ -2,7 +2,7 @@ const { EmbedBuilder } = require("discord.js");
 const { getAllStreamers } = require("../database/streamers");
 const config = require("../config");
 
-// Auto load/install axios
+// Auto-load/install axios
 let axios;
 try {
   axios = require("axios");
@@ -13,16 +13,17 @@ try {
   axios = require("axios");
 }
 
+// Cache to prevent duplicate announcements
 const liveCache = new Set();
 
 // ----------------------
-// TWITCH
+// PLATFORM CHECKS
 // ----------------------
 async function checkTwitch(streamer) {
   if (!config.TWITCH_CLIENT_ID || !config.TWITCH_OAUTH_TOKEN) return null;
   try {
     const res = await axios.get(
-      `https://api.twitch.tv/helix/streams?user_id=${streamer.id}`,
+      `https://api.twitch.tv/helix/streams?user_id=${streamer.platformId}`,
       {
         headers: {
           "Client-ID": config.TWITCH_CLIENT_ID,
@@ -37,14 +38,11 @@ async function checkTwitch(streamer) {
   }
 }
 
-// ----------------------
-// YOUTUBE
-// ----------------------
 async function checkYouTube(streamer) {
   if (!config.YOUTUBE_API_KEY) return null;
   try {
     const res = await axios.get(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.id}&eventType=live&type=video&key=${config.YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.platformId}&eventType=live&type=video&key=${config.YOUTUBE_API_KEY}`
     );
     return res.data.items.length ? res.data.items[0] : null;
   } catch (err) {
@@ -53,9 +51,6 @@ async function checkYouTube(streamer) {
   }
 }
 
-// ----------------------
-// TIKTOK
-// ----------------------
 async function checkTikTok(streamer) {
   try {
     const url = `https://www.tiktok.com/@${streamer.name}?lang=en`;
@@ -81,7 +76,6 @@ async function checkTikTok(streamer) {
 async function checkStreams(client) {
   const streamers = getAllStreamers();
   const channel = client.channels.cache.get(config.LIVE_ANNOUNCE_CHANNEL_ID);
-  const guilds = client.guilds.cache;
 
   if (!channel) {
     console.warn("⚠️ Live announce channel not found.");
@@ -97,37 +91,35 @@ async function checkStreams(client) {
 
     // Remove from cache & remove role if not live
     if (!liveData) {
-      liveCache.delete(streamer.id);
+      liveCache.delete(streamer.discordId);
 
+      const guilds = client.guilds.cache;
       for (const guild of guilds.values()) {
-        const member = guild.members.cache.find(
-          m => m.user.username.toLowerCase() === streamer.name.toLowerCase()
-        );
+        const member = guild.members.cache.get(streamer.discordId);
         if (member && member.roles.cache.has(config.LIVE_ROLE_ID)) {
-          member.roles.remove(config.LIVE_ROLE_ID).catch(() => {});
+          member.roles.remove(config.LIVE_ROLE_ID).catch(console.error);
         }
       }
       continue;
     }
 
     // Skip if already announced
-    if (liveCache.has(streamer.id)) continue;
-    liveCache.add(streamer.id);
+    if (liveCache.has(streamer.discordId)) continue;
+    liveCache.add(streamer.discordId);
 
     // Assign role
+    const guilds = client.guilds.cache;
     for (const guild of guilds.values()) {
-      const member = guild.members.cache.find(
-        m => m.user.username.toLowerCase() === streamer.name.toLowerCase()
-      );
+      const member = guild.members.cache.get(streamer.discordId);
       if (member && !member.roles.cache.has(config.LIVE_ROLE_ID)) {
-        member.roles.add(config.LIVE_ROLE_ID).catch(() => {});
+        member.roles.add(config.LIVE_ROLE_ID).catch(console.error);
       }
     }
 
     // Build stream URL
     let streamUrl;
     if (streamer.platform === "twitch") streamUrl = `https://twitch.tv/${streamer.name}`;
-    if (streamer.platform === "youtube") streamUrl = `https://youtube.com/channel/${streamer.id}`;
+    if (streamer.platform === "youtube") streamUrl = `https://youtube.com/channel/${streamer.platformId}`;
     if (streamer.platform === "tiktok") streamUrl = `https://www.tiktok.com/@${streamer.name}?lang=en`;
 
     const embed = new EmbedBuilder()
