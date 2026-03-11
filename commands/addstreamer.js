@@ -5,40 +5,57 @@ const { addStreamer } = require("../database/streamers");
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("addstreamer")
-    .setDescription("Add a streamer to the Live Now list")
+    .setDescription("Add a streamer to the Live Now list (just paste the URL)")
+    .addStringOption(opt =>
+      opt.setName("link")
+        .setDescription("Streamer URL (Twitch, YouTube, TikTok)")
+        .setRequired(true)
+    )
     .addStringOption(opt =>
       opt.setName("name")
-        .setDescription("Streamer display name")
-        .setRequired(true)
-    )
-    .addStringOption(opt =>
-      opt.setName("platform")
-        .setDescription("Platform (twitch/youtube/tiktok)")
-        .setRequired(true)
-        .addChoices(
-          { name: "Twitch", value: "twitch" },
-          { name: "YouTube", value: "youtube" },
-          { name: "TikTok", value: "tiktok" }
-        )
-    )
-    .addStringOption(opt =>
-      opt.setName("id")
-        .setDescription("Platform-specific user/channel ID")
-        .setRequired(true)
+        .setDescription("Optional display name")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
     if (!isStaff(interaction.member))
       return interaction.reply({ content: "🚫 Staff only.", ephemeral: true });
 
-    const name = interaction.options.getString("name");
-    const platform = interaction.options.getString("platform");
-    const id = interaction.options.getString("id");
+    const link = interaction.options.getString("link");
+    let name = interaction.options.getString("name") || null;
+
+    // Determine platform and extract ID
+    let platform, id;
+    try {
+      const url = new URL(link);
+
+      if (url.hostname.includes("twitch.tv")) {
+        platform = "twitch";
+        id = url.pathname.replace(/^\/+|\/+$/g, ""); // remove slashes
+      } else if (url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")) {
+        platform = "youtube";
+        if (url.hostname.includes("youtu.be")) {
+          id = url.pathname.replace(/^\/+|\/+$/g, "");
+        } else {
+          id = url.searchParams.get("channel") || url.searchParams.get("user");
+          if (!id) throw new Error("Cannot extract YouTube ID from link");
+        }
+      } else if (url.hostname.includes("tiktok.com")) {
+        platform = "tiktok";
+        id = url.pathname.split("/")[1]; // first path segment
+      } else {
+        throw new Error("Unsupported platform");
+      }
+
+      if (!name) name = id; // fallback to ID as name
+    } catch (err) {
+      return interaction.reply({ content: `⚠️ Invalid link or platform: ${err.message}`, ephemeral: true });
+    }
 
     const success = addStreamer({ name, platform, id });
     if (!success)
       return interaction.reply({ content: "⚠️ Streamer already exists in the list.", ephemeral: true });
 
-    interaction.reply({ content: `✅ Added **${name}** (${platform}) to Live Now list.`, ephemeral: true });
+    return interaction.reply({ content: `✅ Added **${name}** (${platform}) to Live Now list.`, ephemeral: true });
   }
 };
