@@ -1,25 +1,33 @@
-// services/liveMonitor.js
 const { EmbedBuilder } = require("discord.js");
 const { getAllStreamers } = require("../database/streamers");
 const config = require("../config");
-const { getTwitchToken, refreshTwitchToken } = require("./twitchToken");
+const path = require("path");
 
 // ----------------------
-// AUTO INSTALL AXIOS (v1.6.6, CommonJS safe)
+// TWITCH TOKEN SERVICE
+// ----------------------
+let twitchTokenService;
+try {
+  twitchTokenService = require(path.join(__dirname, "twitchToken"));
+} catch (err) {
+  console.error("❌ Failed to load twitchToken.js:", err.message);
+  twitchTokenService = { getTwitchToken: () => null, refreshTwitchToken: async () => null };
+}
+const { getTwitchToken, refreshTwitchToken } = twitchTokenService;
+
+// ----------------------
+// AUTO LOAD/INSTALL AXIOS
 // ----------------------
 let axios;
 try {
   axios = require("axios");
 } catch {
-  console.log("📦 Axios not found, installing v1.6.6...");
+  console.log("📦 Axios not found, installing Axios v0.27.2...");
   const { execSync } = require("child_process");
-  execSync("npm install axios@1.6.6", { stdio: "inherit" });
+  execSync("npm install axios@0.27.2 --no-save", { stdio: "inherit" });
   axios = require("axios");
 }
 
-// ----------------------
-// LIVE CACHE
-// ----------------------
 const liveCache = new Set();
 
 // ----------------------
@@ -28,11 +36,10 @@ const liveCache = new Set();
 async function checkTwitch(streamer) {
   if (!config.TWITCH_CLIENT_ID) return null;
 
-  // ensure token is valid
-  const token = getTwitchToken() || (await refreshTwitchToken());
-  if (!token) return null;
-
   try {
+    const token = await refreshTwitchToken() || getTwitchToken();
+    if (!token) return null;
+
     const res = await axios.get(
       `https://api.twitch.tv/helix/streams?user_id=${streamer.id}`,
       {
@@ -71,7 +78,6 @@ async function checkTikTok(streamer) {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
       }
     });
-
     const match = res.data.match(/"isLiveStream":(true|false)/);
     if (match && match[1] === "true") return { live: true };
     return null;
@@ -87,9 +93,9 @@ async function checkTikTok(streamer) {
 async function checkStreams(client) {
   const streamers = getAllStreamers();
   const channel = client.channels.cache.get(config.LIVE_ANNOUNCE_CHANNEL_ID);
-  if (!channel) return console.warn("⚠️ Live announce channel not found.");
-
   const guilds = client.guilds.cache;
+
+  if (!channel) return console.warn("⚠️ Live announce channel not found.");
 
   for (const streamer of streamers) {
     let liveData = null;
@@ -98,13 +104,12 @@ async function checkStreams(client) {
     if (streamer.platform === "youtube") liveData = await checkYouTube(streamer);
     if (streamer.platform === "tiktok") liveData = await checkTikTok(streamer);
 
-    // REMOVE ROLE IF NOT LIVE
+    // Not live → remove role & remove from cache
     if (!liveData) {
       liveCache.delete(streamer.id);
-
       for (const guild of guilds.values()) {
         const member = guild.members.cache.find(
-          (m) => m.user.username.toLowerCase() === streamer.name.toLowerCase()
+          m => m.user.username.toLowerCase() === streamer.name.toLowerCase()
         );
         if (member && member.roles.cache.has(config.LIVE_ROLE_ID)) {
           member.roles.remove(config.LIVE_ROLE_ID).catch(() => {});
@@ -113,27 +118,25 @@ async function checkStreams(client) {
       continue;
     }
 
-    // SKIP ALREADY ANNOUNCED
+    // Already announced → skip
     if (liveCache.has(streamer.id)) continue;
     liveCache.add(streamer.id);
 
-    // ADD ROLE
+    // Assign LIVE NOW role
     for (const guild of guilds.values()) {
       const member = guild.members.cache.find(
-        (m) => m.user.username.toLowerCase() === streamer.name.toLowerCase()
+        m => m.user.username.toLowerCase() === streamer.name.toLowerCase()
       );
       if (member && !member.roles.cache.has(config.LIVE_ROLE_ID)) {
         member.roles.add(config.LIVE_ROLE_ID).catch(() => {});
       }
     }
 
-    // BUILD EMBED
-    let streamUrl =
-      streamer.platform === "twitch"
-        ? `https://twitch.tv/${streamer.name}`
-        : streamer.platform === "youtube"
-        ? `https://youtube.com/channel/${streamer.id}`
-        : `https://www.tiktok.com/@${streamer.name}?lang=en`;
+    // Build stream URL
+    let streamUrl;
+    if (streamer.platform === "twitch") streamUrl = `https://twitch.tv/${streamer.name}`;
+    if (streamer.platform === "youtube") streamUrl = `https://youtube.com/channel/${streamer.id}`;
+    if (streamer.platform === "tiktok") streamUrl = `https://www.tiktok.com/@${streamer.name}?lang=en`;
 
     const embed = new EmbedBuilder()
       .setTitle(`🔴 ${streamer.name} is LIVE`)
@@ -142,18 +145,17 @@ async function checkStreams(client) {
       .setFooter({ text: "BattleFront Madness Creator Team" })
       .setTimestamp();
 
-    channel.send({ embeds: [embed] }).catch(() => {});
+    channel.send({ embeds: [embed] });
     console.log(`LIVE DETECTED: ${streamer.name} (${streamer.platform})`);
   }
 }
 
 // ----------------------
-// START MONITOR
+// START SERVICE
 // ----------------------
 function startLiveMonitor(client) {
   console.log("📡 Live monitor started");
-  checkStreams(client); // run immediately
-  setInterval(() => checkStreams(client), 60000); // check every 60s
+  setInterval(() => checkStreams(client), 60000); // every 60 seconds
 }
 
 module.exports = { startLiveMonitor };
