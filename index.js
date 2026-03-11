@@ -30,11 +30,31 @@ const fs = require("fs");
 const path = require("path");
 const polls = require("./database/polls");
 const { initServerUpdater } = require("./serverUpdater");
-const { startLiveMonitor } = require("./services/liveMonitor");
-const { refreshTwitchToken } = require("./services/twitchToken");
-
-// XP SYSTEM
 const { initXPListeners } = require("./xp/xpListeners");
+
+// ----------------------
+// AXIOS AUTO LOAD
+// ----------------------
+let axios;
+try {
+  axios = require("axios");
+} catch {
+  console.log("📦 Axios not found, installing Axios v0.27.2...");
+  const { execSync } = require("child_process");
+  execSync("npm install axios@0.27.2 --no-save", { stdio: "inherit" });
+  axios = require("axios");
+}
+
+// ----------------------
+// LIVE MONITOR
+// ----------------------
+let startLiveMonitor;
+try {
+  ({ startLiveMonitor } = require(path.join(__dirname, "services/liveMonitor")));
+} catch (err) {
+  console.warn("⚠️ Live monitor not found, skipping:", err.message);
+  startLiveMonitor = () => {};
+}
 
 // ==================================================
 // DISCORD CLIENT
@@ -92,44 +112,32 @@ for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) 
 // ==================================================
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Slash commands
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (cmd) await cmd.execute(interaction, client);
       return;
     }
-
-    // Buttons (Tickets)
-    if (interaction.isButton()) {
+    if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
       const ticket = client.commands.get("ticket");
       if (!ticket) return;
 
-      if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton)
-        return ticket.handleButton(interaction);
+      if (interaction.isButton()) {
+        if (interaction.customId.startsWith("ticket_type_") && ticket.handleButton)
+          return ticket.handleButton(interaction);
+        if (interaction.customId === "ticket_close" && ticket.handleCloseButton)
+          return ticket.handleCloseButton(interaction);
+      }
 
-      if (interaction.customId === "ticket_close" && ticket.handleCloseButton)
-        return ticket.handleCloseButton(interaction);
-    }
-
-    // Select menus (Ticket Priority)
-    if (interaction.isStringSelectMenu()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket && ticket.handlePrioritySelect)
+      if (interaction.isStringSelectMenu() && ticket.handlePrioritySelect)
         return ticket.handlePrioritySelect(interaction);
-    }
 
-    // Modals (Ticket Submit)
-    if (interaction.isModalSubmit()) {
-      const ticket = client.commands.get("ticket");
-      if (ticket && ticket.handleModalSubmit)
+      if (interaction.isModalSubmit() && ticket.handleModalSubmit)
         return ticket.handleModalSubmit(interaction, client);
     }
   } catch (err) {
     console.error("INTERACTION ERROR:", err);
     if (!interaction.replied && !interaction.deferred) {
-      try {
-        await interaction.reply({ content: "❌ Something went wrong.", ephemeral: true });
-      } catch {}
+      try { await interaction.reply({ content: "❌ Something went wrong.", ephemeral: true }); } catch {}
     }
   }
 });
@@ -145,21 +153,15 @@ initXPListeners(client);
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // Refresh Twitch token at startup
-  await refreshTwitchToken();
-
-  // Optional: auto-refresh Twitch token every 55 minutes
-  setInterval(() => refreshTwitchToken(), 55 * 60 * 1000);
-
   // Poll system
   polls.init(client);
   console.log("✅ Poll system initialised.");
 
-  // Initialize the Arma Reforger server updater
+  // Server updater
   await initServerUpdater(client);
   console.log("✅ Server updater initialised.");
 
-  // START LIVE MONITOR
+  // Live monitor
   startLiveMonitor(client);
   console.log("✅ Live monitor started.");
 });
