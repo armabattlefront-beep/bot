@@ -2,33 +2,37 @@ const { EmbedBuilder } = require("discord.js");
 const { getAllStreamers } = require("../database/streamers");
 const config = require("../config");
 
-// Auto-load/install axios
+// ----------------------
+// AUTO LOAD / INSTALL AXIOS v1.6.6
+// ----------------------
 let axios;
 try {
   axios = require("axios");
 } catch {
-  console.log("📦 Axios not found, installing...");
+  console.log("📦 Axios not found, installing Axios v1.6.6...");
   const { execSync } = require("child_process");
-  execSync("npm install axios", { stdio: "inherit" });
+  execSync("npm install axios@1.6.6", { stdio: "inherit" });
   axios = require("axios");
 }
 
-// Cache to prevent duplicate announcements
+// ----------------------
+// CACHE
+// ----------------------
 const liveCache = new Set();
 
 // ----------------------
-// PLATFORM CHECKS
+// TWITCH CHECK
 // ----------------------
 async function checkTwitch(streamer) {
   if (!config.TWITCH_CLIENT_ID || !config.TWITCH_OAUTH_TOKEN) return null;
   try {
     const res = await axios.get(
-      `https://api.twitch.tv/helix/streams?user_id=${streamer.platformId}`,
+      `https://api.twitch.tv/helix/streams?user_id=${streamer.id}`,
       {
         headers: {
           "Client-ID": config.TWITCH_CLIENT_ID,
-          Authorization: `Bearer ${config.TWITCH_OAUTH_TOKEN}`
-        }
+          Authorization: `Bearer ${config.TWITCH_OAUTH_TOKEN}`,
+        },
       }
     );
     return res.data.data.length ? res.data.data[0] : null;
@@ -38,11 +42,14 @@ async function checkTwitch(streamer) {
   }
 }
 
+// ----------------------
+// YOUTUBE CHECK
+// ----------------------
 async function checkYouTube(streamer) {
   if (!config.YOUTUBE_API_KEY) return null;
   try {
     const res = await axios.get(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.platformId}&eventType=live&type=video&key=${config.YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${streamer.id}&eventType=live&type=video&key=${config.YOUTUBE_API_KEY}`
     );
     return res.data.items.length ? res.data.items[0] : null;
   } catch (err) {
@@ -51,14 +58,17 @@ async function checkYouTube(streamer) {
   }
 }
 
+// ----------------------
+// TIKTOK CHECK
+// ----------------------
 async function checkTikTok(streamer) {
   try {
     const url = `https://www.tiktok.com/@${streamer.name}?lang=en`;
     const res = await axios.get(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-      }
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+      },
     });
 
     const match = res.data.match(/"isLiveStream":(true|false)/);
@@ -76,6 +86,7 @@ async function checkTikTok(streamer) {
 async function checkStreams(client) {
   const streamers = getAllStreamers();
   const channel = client.channels.cache.get(config.LIVE_ANNOUNCE_CHANNEL_ID);
+  const guilds = client.guilds.cache;
 
   if (!channel) {
     console.warn("⚠️ Live announce channel not found.");
@@ -91,35 +102,37 @@ async function checkStreams(client) {
 
     // Remove from cache & remove role if not live
     if (!liveData) {
-      liveCache.delete(streamer.discordId);
+      liveCache.delete(streamer.id);
 
-      const guilds = client.guilds.cache;
       for (const guild of guilds.values()) {
-        const member = guild.members.cache.get(streamer.discordId);
+        const member = guild.members.cache.find(
+          (m) => m.user.username.toLowerCase() === streamer.name.toLowerCase()
+        );
         if (member && member.roles.cache.has(config.LIVE_ROLE_ID)) {
-          member.roles.remove(config.LIVE_ROLE_ID).catch(console.error);
+          member.roles.remove(config.LIVE_ROLE_ID).catch(() => {});
         }
       }
       continue;
     }
 
     // Skip if already announced
-    if (liveCache.has(streamer.discordId)) continue;
-    liveCache.add(streamer.discordId);
+    if (liveCache.has(streamer.id)) continue;
+    liveCache.add(streamer.id);
 
     // Assign role
-    const guilds = client.guilds.cache;
     for (const guild of guilds.values()) {
-      const member = guild.members.cache.get(streamer.discordId);
+      const member = guild.members.cache.find(
+        (m) => m.user.username.toLowerCase() === streamer.name.toLowerCase()
+      );
       if (member && !member.roles.cache.has(config.LIVE_ROLE_ID)) {
-        member.roles.add(config.LIVE_ROLE_ID).catch(console.error);
+        member.roles.add(config.LIVE_ROLE_ID).catch(() => {});
       }
     }
 
     // Build stream URL
     let streamUrl;
     if (streamer.platform === "twitch") streamUrl = `https://twitch.tv/${streamer.name}`;
-    if (streamer.platform === "youtube") streamUrl = `https://youtube.com/channel/${streamer.platformId}`;
+    if (streamer.platform === "youtube") streamUrl = `https://youtube.com/channel/${streamer.id}`;
     if (streamer.platform === "tiktok") streamUrl = `https://www.tiktok.com/@${streamer.name}?lang=en`;
 
     const embed = new EmbedBuilder()
