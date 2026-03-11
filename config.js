@@ -22,7 +22,7 @@ module.exports = {
     // =========================
     // LIVE ROLE
     // =========================
-    LIVE_ROLE_ID: process.env.LIVE_ROLE_ID || "147999999999999999", // replace with your LIVE NOW role ID
+    LIVE_ROLE_ID: process.env.LIVE_ROLE_ID || "1408511650339881121", // replace with your LIVE NOW role ID
 
     // =========================
     // TICKET SYSTEM
